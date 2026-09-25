@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Droidlog — Android 日志采集</title>
+    <style>
+      /*
+       * Critical, inlined paint.
+       *
+       * This runs before the bundled stylesheet, so the very first frame inside
+       * the webview is the app's surface instead of the default white — which is
+       * what made the window flash when it opened. The values mirror
+       * --dl-background for each scheme; the app's own theme is applied by
+       * main.tsx immediately afterwards.
+       */
+      html {
+        background-color: #fbfcfd;
+      }
+      @media (prefers-color-scheme: dark) {
+        html {
+          background-color: #121517;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
