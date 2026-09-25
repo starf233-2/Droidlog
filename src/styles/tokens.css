@@ -1,0 +1,257 @@
+/* =============================================================================
+ * droidlog -- Material Design 3 design tokens
+ * =============================================================================
+ *
+ * HARD CONSTRAINTS (project-wide, non-negotiable):
+ *   1. No gradients. linear / radial / conic are all forbidden. `global.css`
+ *      additionally disables `background-image` globally so one cannot leak in.
+ *   2. No vivid or high-saturation colour, no neon, no glow, no glassmorphism,
+ *      no coloured shadows.
+ *   3. Primary palette is a desaturated gray-blue.
+ *   4. Log-level status colours are desaturated to the same degree as the
+ *      neutrals: an ERROR row is legible, not alarming.
+ *   5. Depth is expressed by the `surface-container-*` scale plus a 1px
+ *      `outline-variant` border. Shadows exist but are extremely faint and
+ *      strictly neutral.
+ *
+ * Theme switching: the store writes `data-theme="light|dark"` onto <html>, so
+ * only two token blocks are needed here -- no duplicated prefers-color-scheme
+ * media query.
+ *
+ * Every colour below is a flat hex value or a flat rgba() neutral. Nothing else.
+ *
+ * This file is intentionally ASCII-only so that it round-trips safely through
+ * any editor or tool that guesses encodings.
+ * -------------------------------------------------------------------------- */
+
+:root {
+  color-scheme: light;
+
+  /* ---------------------------------------------------------------- primary */
+  /* Desaturated gray-blue. Hover/active states come from the container tones,
+     never from a lighter tint of the accent. */
+  --dl-primary: #4a5a6a;
+  --dl-on-primary: #ffffff;
+  --dl-primary-container: #d6dee6;
+  --dl-on-primary-container: #16232e;
+  --dl-primary-hover: #405062;
+  --dl-primary-active: #374556;
+
+  /* -------------------------------------------------------------- secondary */
+  --dl-secondary: #54606b;
+  --dl-on-secondary: #ffffff;
+  --dl-secondary-container: #e0e5ea;
+  --dl-on-secondary-container: #1b242c;
+
+  /* --------------------------------------------------------------- tertiary */
+  --dl-tertiary: #5c6470;
+  --dl-on-tertiary: #ffffff;
+  --dl-tertiary-container: #e2e5eb;
+  --dl-on-tertiary-container: #20262e;
+
+  /* ------------------------------------------------------------------ error */
+  /* Muted brick, deliberately not a saturated red. */
+  --dl-error: #8a5c5b;
+  --dl-on-error: #ffffff;
+  --dl-error-container: #f0e4e3;
+  --dl-on-error-container: #3a2221;
+
+  /* --------------------------------------------------------------- surfaces */
+  --dl-background: #fbfcfd;
+  --dl-on-background: #191c1e;
+  --dl-surface: #fbfcfd;
+  --dl-on-surface: #191c1e;
+  --dl-surface-variant: #e7eaed;
+  --dl-on-surface-variant: #454b50;
+
+  /* The M3 elevation scale. Layers are distinguished by tone, not by shadow. */
+  --dl-surface-container-lowest: #ffffff;
+  --dl-surface-container-low: #f6f8f9;
+  --dl-surface-container: #f1f4f6;
+  --dl-surface-container-high: #eaeef1;
+  --dl-surface-container-highest: #e3e8ec;
+
+  --dl-inverse-surface: #2e3235;
+  --dl-inverse-on-surface: #f0f2f4;
+
+  /* --------------------------------------------------------------- outlines */
+  --dl-outline: #757b80;
+  --dl-outline-variant: #c5cace;
+
+  /* ------------------------------------------------------------------ state */
+  /* Neutral scrims only. No coloured overlays anywhere. */
+  --dl-hover-overlay: rgba(25, 28, 30, 0.045);
+  --dl-pressed-overlay: rgba(25, 28, 30, 0.085);
+  --dl-focus-ring: rgba(74, 90, 106, 0.55);
+  --dl-scrim: rgba(20, 24, 27, 0.32);
+
+  /* --------------------------------------------------------------- shadows */
+  /* Extremely faint, strictly neutral. Level 1 is the default for raised
+     chrome; 2 is reserved for the filter panel; 3 for dialogs. */
+  --dl-shadow-1: 0 1px 2px rgba(16, 20, 24, 0.05);
+  --dl-shadow-2: 0 2px 6px rgba(16, 20, 24, 0.06);
+  --dl-shadow-3: 0 4px 14px rgba(16, 20, 24, 0.08);
+
+  /* ------------------------------------------------------------ log levels */
+  /* Every accent holds saturation well under ~22%. */
+  --dl-level-verbose: #6e747a;
+  --dl-level-debug: #5c6b7a;
+  --dl-level-info: #4f6a63;
+  --dl-level-warn: #7a7152;
+  --dl-level-error: #8a5c5b;
+  --dl-level-fatal: #6f5468;
+  --dl-level-unknown: #787e84;
+
+  --dl-level-verbose-bg: #eceef0;
+  --dl-level-debug-bg: #e4eaef;
+  --dl-level-info-bg: #e2ede9;
+  --dl-level-warn-bg: #efebdd;
+  --dl-level-error-bg: #f0e4e3;
+  --dl-level-fatal-bg: #eae2e8;
+  --dl-level-unknown-bg: #eceef0;
+
+  /* ------------------------------------------------------------- shape/type */
+  /* Radius contract -- one radius per role, so two elements are never adjacent
+     with visibly different corner sizes. Pick by role, never by taste:
+       control  every button, input, select, segmented control, list row
+       nested   an element that sits INSIDE a control (chip, segment option);
+                it is control-minus-padding so the corners stay concentric
+       surface  panels, cards and dialogs (reserved for overlays)
+       full     circles only -- status dots and scrollbar thumbs
+     The old pill buttons (999px) next to 4px inputs were the mismatch this
+     contract removes; there is no longer any pill-shaped control. */
+  --dl-radius-xs: 6px;
+  --dl-radius-sm: 8px;
+  --dl-radius-md: 12px;
+  --dl-radius-lg: 16px;
+  --dl-radius-full: 999px;
+
+  --dl-radius-control: var(--dl-radius-sm);
+  --dl-radius-nested: var(--dl-radius-xs);
+  --dl-radius-surface: var(--dl-radius-md);
+
+  --dl-space-1: 4px;
+  --dl-space-2: 8px;
+  --dl-space-3: 12px;
+  --dl-space-4: 16px;
+  --dl-space-5: 20px;
+  --dl-space-6: 24px;
+  --dl-space-8: 32px;
+
+  /* --------------------------------------------------------------- families */
+  /*
+   * One stack drives every non-log glyph in the application: the `--dl-type-*`
+   * shorthands below all reference it, and `material-bridge.css` maps it onto
+   * `--md-sys-typescale-*-font`, so the library's components inherit it too.
+   *
+   * Roboto covers Latin and digits; Noto Sans SC covers Chinese. Fallback is
+   * per glyph, so Latin is always Roboto even though Noto also contains Latin
+   * glyphs — Roboto simply comes first and wins for the characters it has.
+   *
+   * Both are bundled (see main.tsx); the system faces after them are insurance
+   * for the rare glyph neither font carries.
+   */
+  --dl-font-sans: 'Roboto Variable', 'Noto Sans SC Variable', system-ui,
+    -apple-system, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+
+  /* The log console keeps its monospace stack: a proportional face would break
+     the column alignment the virtualised table depends on, and log text is
+     data, not UI. `.dl-mono` is the only consumer. */
+  --dl-font-mono: ui-monospace, 'Cascadia Mono', 'JetBrains Mono', Consolas,
+    'Courier New', monospace;
+
+  --dl-type-title-large: 22px / 28px var(--dl-font-sans);
+  --dl-type-title-medium: 16px / 24px var(--dl-font-sans);
+  --dl-type-title-small: 14px / 20px var(--dl-font-sans);
+  --dl-type-body-large: 14px / 20px var(--dl-font-sans);
+  --dl-type-body-medium: 13px / 18px var(--dl-font-sans);
+  --dl-type-label-large: 14px / 20px var(--dl-font-sans);
+  --dl-type-label-medium: 12px / 16px var(--dl-font-sans);
+  --dl-type-label-small: 11px / 16px var(--dl-font-sans);
+  --dl-type-mono: 12.5px / 18px var(--dl-font-mono);
+
+  /* ---------------------------------------------------------------- layout */
+  --dl-rail-width: 272px;
+  --dl-filter-width: 320px;
+  --dl-toolbar-height: 56px;
+  /* The scrollbar's width, and therefore the width of a reserved
+     `scrollbar-gutter`. Fixed on purpose: `scrollbar-gutter: stable both-edges`
+     makes the reserved space part of the layout, so panel headers can align to
+     the content inside a scroller with plain arithmetic instead of a magic
+     number that would vary per machine. */
+  --dl-scrollbar-w: 10px;
+}
+
+/* =============================================================================
+ * Dark theme -- same roles, same low chroma, inverted lightness.
+ * ========================================================================== */
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --dl-primary: #a9bac9;
+  --dl-on-primary: #1b2a36;
+  --dl-primary-container: #33424f;
+  --dl-on-primary-container: #d3e1ee;
+  --dl-primary-hover: #b6c6d4;
+  --dl-primary-active: #c2d0dc;
+
+  --dl-secondary: #b0bac4;
+  --dl-on-secondary: #232b32;
+  --dl-secondary-container: #333c44;
+  --dl-on-secondary-container: #dde3e9;
+
+  --dl-tertiary: #b4bac4;
+  --dl-on-tertiary: #262c33;
+  --dl-tertiary-container: #373e45;
+  --dl-on-tertiary-container: #dfe3e9;
+
+  --dl-error: #c99a99;
+  --dl-on-error: #3a2221;
+  --dl-error-container: #4a2e2e;
+  --dl-on-error-container: #f0dedd;
+
+  --dl-background: #121517;
+  --dl-on-background: #e2e5e8;
+  --dl-surface: #121517;
+  --dl-on-surface: #e2e5e8;
+  --dl-surface-variant: #3f4447;
+  --dl-on-surface-variant: #bfc5ca;
+
+  --dl-surface-container-lowest: #0d0f11;
+  --dl-surface-container-low: #1a1d1f;
+  --dl-surface-container: #1e2224;
+  --dl-surface-container-high: #282c2f;
+  --dl-surface-container-highest: #333739;
+
+  --dl-inverse-surface: #e2e5e8;
+  --dl-inverse-on-surface: #2e3235;
+
+  --dl-outline: #8a9095;
+  --dl-outline-variant: #3f4447;
+
+  --dl-hover-overlay: rgba(226, 229, 232, 0.055);
+  --dl-pressed-overlay: rgba(226, 229, 232, 0.1);
+  --dl-focus-ring: rgba(169, 186, 201, 0.6);
+  --dl-scrim: rgba(4, 6, 8, 0.5);
+
+  --dl-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.22);
+  --dl-shadow-2: 0 2px 6px rgba(0, 0, 0, 0.26);
+  --dl-shadow-3: 0 4px 14px rgba(0, 0, 0, 0.3);
+
+  --dl-level-verbose: #9aa1a8;
+  --dl-level-debug: #93a4b5;
+  --dl-level-info: #8fb0a6;
+  --dl-level-warn: #b8af8e;
+  --dl-level-error: #c99a99;
+  --dl-level-fatal: #b99bb0;
+  --dl-level-unknown: #a2a8ae;
+
+  --dl-level-verbose-bg: #24282b;
+  --dl-level-debug-bg: #232b33;
+  --dl-level-info-bg: #222e2b;
+  --dl-level-warn-bg: #2e2b20;
+  --dl-level-error-bg: #322524;
+  --dl-level-fatal-bg: #2b2229;
+  --dl-level-unknown-bg: #24282b;
+}

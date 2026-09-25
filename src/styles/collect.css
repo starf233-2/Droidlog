@@ -1,0 +1,303 @@
+/**
+ * Crash collection: row markers, the crash-only lens, and the report panel.
+ *
+ * Imported after `app.css` because these rules are the newest layer and must win
+ * against the table's own row styles.
+ *
+ * The visual language follows the rest of the app: depth from
+ * `surface-container` tones plus a hairline `outline-variant` border, no
+ * gradients, one accent per meaning, and the radius contract
+ * (control / nested / surface).
+ */
+
+/* ------------------------------------------------------------ row markers */
+
+/*
+ * The marker column reserves its width even on rows without a crash, so the
+ * level badge and the timestamp do not shift by 22px when a crash appears —
+ * a table whose columns move while it streams is unreadable.
+ */
+.dl-log-row__crash {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  font: var(--dl-type-label-small);
+  color: transparent;
+}
+
+.dl-log-row__crash--marked {
+  /* Orange is the one warm accent the palette leaves free: the primary is
+     desaturated blue-grey, so a crash marker can own this hue outright. */
+  color: #8a5a2b;
+  background-color: #f5e9da;
+  border-radius: var(--dl-radius-nested);
+}
+
+:root[data-theme='dark'] .dl-log-row__crash--marked {
+  color: #e0b184;
+  background-color: #3d3227;
+}
+
+/* A left edge on the row itself, so a crash is visible while scanning the
+   message column rather than only in the narrow marker gutter. */
+.dl-log-row--crash {
+  box-shadow: inset 2px 0 0 0 #8a5a2b;
+}
+
+:root[data-theme='dark'] .dl-log-row--crash {
+  box-shadow: inset 2px 0 0 0 #e0b184;
+}
+
+/* ---------------------------------------------------- table action strip */
+
+.dl-logs__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--dl-space-2);
+  padding: var(--dl-space-2) var(--dl-space-3);
+  border-bottom: 1px solid var(--dl-outline-variant);
+  background-color: var(--dl-surface-container-low);
+  flex: none;
+  overflow: hidden;
+}
+
+.dl-toggle--on {
+  background-color: var(--dl-secondary-container);
+  color: var(--dl-on-secondary-container);
+  border-radius: var(--dl-radius-control);
+}
+
+.dl-countdown {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--dl-space-2);
+  margin-left: auto;
+  padding: 0 var(--dl-space-2);
+  height: 24px;
+  border: 1px solid var(--dl-outline-variant);
+  border-radius: var(--dl-radius-nested);
+  background-color: var(--dl-surface-container);
+  font: var(--dl-type-label-small);
+  color: var(--dl-on-surface-variant);
+  white-space: nowrap;
+  flex: none;
+}
+
+.dl-countdown__value {
+  color: var(--dl-on-surface);
+}
+
+/* --------------------------------------------------------- log action strip */
+
+/* One-shot collectors, docked in the log pane's strip. */
+.dl-logs__collect {
+  display: flex;
+  align-items: center;
+  gap: var(--dl-space-1);
+  flex: none;
+}
+
+/* Recovery is a mode, not an error: solid, low-saturation, and unmistakable
+   against the blue-grey chrome. */
+.dl-chip--recovery {
+  border-color: transparent;
+  background-color: #f0e2d2;
+  color: #7a4f22;
+}
+
+:root[data-theme='dark'] .dl-chip--recovery {
+  background-color: #40342a;
+  color: #dcb388;
+}
+
+.dl-chip--crash {
+  border-color: transparent;
+  background-color: var(--dl-error-container);
+  color: var(--dl-error);
+}
+
+/* ---------------------------------------------------------- report panel */
+
+/*
+ * A docked card *inside* the log column, below the table — not an overlay.
+ *
+ * The first attempt floated it over the log pane; it covered the very rows it
+ * describes, and because `.dl-app__body` is not a positioned ancestor the
+ * absolute box resolved against the viewport instead, so it also sat on top of
+ * the toolbar. Docking it costs the table some height while a report is open
+ * (close it and the height comes back) and cannot overlap anything.
+ */
+.dl-report {
+  flex: none;
+  /* Never more than about a third of the column: the table above it is the
+     thing the report is about, and it has to stay readable. */
+  max-height: 36%;
+  margin: 0 var(--dl-space-3) var(--dl-space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--dl-space-3);
+  padding: var(--dl-space-3) var(--dl-space-4);
+  overflow-y: auto;
+  background-color: var(--dl-surface-container-lowest);
+  border: 1px solid var(--dl-outline-variant);
+  border-radius: var(--dl-radius-surface);
+}
+
+.dl-report__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--dl-space-2);
+}
+
+.dl-report__title {
+  font: var(--dl-type-title-small);
+  color: var(--dl-on-surface);
+}
+
+.dl-report__summary {
+  margin: 0;
+  font: var(--dl-type-body-medium);
+  color: var(--dl-on-surface-variant);
+}
+
+.dl-report__subtitle {
+  display: block;
+  margin-bottom: var(--dl-space-2);
+  font: var(--dl-type-label-large);
+  color: var(--dl-on-surface);
+}
+
+.dl-report__probes,
+.dl-report__crash-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--dl-space-2);
+}
+
+.dl-probe {
+  display: flex;
+  flex-direction: column;
+  gap: var(--dl-space-1);
+  padding: var(--dl-space-2) var(--dl-space-3);
+  border: 1px solid var(--dl-outline-variant);
+  border-left-width: 3px;
+  border-radius: var(--dl-radius-nested);
+  background-color: var(--dl-surface-container-low);
+}
+
+/* Status is carried by the left edge, so the list can be scanned vertically. */
+.dl-probe--ok {
+  border-left-color: var(--dl-primary);
+}
+
+.dl-probe--idle {
+  border-left-color: var(--dl-outline-variant);
+}
+
+.dl-probe--warn {
+  border-left-color: #8a5a2b;
+}
+
+.dl-probe--bad {
+  border-left-color: var(--dl-error);
+}
+
+.dl-probe__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--dl-space-2);
+}
+
+.dl-probe__label {
+  font: var(--dl-type-body-medium);
+  color: var(--dl-on-surface);
+}
+
+.dl-probe__status {
+  font: var(--dl-type-label-small);
+  color: var(--dl-on-surface-variant);
+  flex: none;
+}
+
+.dl-probe__meta {
+  display: flex;
+  gap: var(--dl-space-1);
+  font: var(--dl-type-label-small);
+  color: var(--dl-on-surface-variant);
+}
+
+.dl-probe__detail,
+.dl-probe__hint {
+  margin: 0;
+  font: var(--dl-type-label-small);
+  color: var(--dl-on-surface-variant);
+  overflow-wrap: anywhere;
+}
+
+/* The remedy is the actionable line: give it the marker colour and a rail. */
+.dl-probe__hint {
+  color: #7a4f22;
+  padding-left: var(--dl-space-2);
+  border-left: 2px solid #d9b98c;
+}
+
+:root[data-theme='dark'] .dl-probe__hint {
+  color: #dcb388;
+  border-left-color: #6a563f;
+}
+
+.dl-probe__command {
+  display: block;
+  padding: var(--dl-space-1) var(--dl-space-2);
+  border-radius: var(--dl-radius-xs);
+  background-color: var(--dl-surface-container-high);
+  color: var(--dl-on-surface-variant);
+  font: var(--dl-type-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dl-report__crashes {
+  border-top: 1px solid var(--dl-outline-variant);
+  padding-top: var(--dl-space-3);
+}
+
+.dl-report__crash-item {
+  display: flex;
+  align-items: center;
+  gap: var(--dl-space-2);
+  padding: var(--dl-space-1) var(--dl-space-2);
+  border-radius: var(--dl-radius-nested);
+  background-color: var(--dl-surface-container);
+}
+
+.dl-report__crash-kind {
+  font: var(--dl-type-label-medium);
+  color: var(--dl-on-surface);
+}
+
+.dl-report__crash-seq {
+  color: var(--dl-on-surface-variant);
+  font: var(--dl-type-label-small);
+}
+
+.dl-report__crash-jump {
+  margin-left: auto;
+}
+
+/* The panel is inside the log column, so there is no breakpoint to dance around:
+   it is as wide as the column and only its height is capped. On a short window
+   the table and the report share the column instead of the report floating over
+   it. */
+@media (max-height: 700px) {
+  .dl-report {
+    max-height: 46%;
+  }
+}

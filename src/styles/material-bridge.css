@@ -1,0 +1,457 @@
+/* =============================================================================
+ * droidlog -- bridge onto the Material component tokens
+ * =============================================================================
+ *
+ * The component library styles itself from two families of custom properties:
+ *
+ *   --md-sys-*   design-system level (colour, shape, typescale)
+ *   --md-<component>-*   per-component overrides (height, padding, shape, ...)
+ *
+ * Colour is supplied at runtime by `src/theme` (the palette is generated, so it
+ * cannot live in a stylesheet). Shape, density and typography are static, and
+ * this file is where they are pinned to the project's existing contracts:
+ *
+ *   * **The radius contract holds.** Material's defaults are pills — a filled
+ *     button is `--md-sys-shape-corner-full` (9999px) out of the box, and the
+ *     project deliberately removed pill controls in an earlier revision because
+ *     they clashed with the 4–8px fields next to them. Every component shape is
+ *     re-pointed at `--dl-radius-control` / `--dl-radius-surface`, *including the
+ *     per-corner tokens*: a component reads both the aggregate
+ *     (`-container-shape`) and the four corner tokens
+ *     (`-container-shape-start-start`, `-start-end`, `-end-start`, `-end-end`),
+ *     and setting only the aggregate leaves the drawn background pill-shaped
+ *     while the host is square — which shows up as a visible seam at the corners.
+ *
+ *   * **Density stays a tool, not a phone.** Material sizes controls for touch
+ *     (56px text fields, 40px buttons, 52×32 switches). This is a desktop log
+ *     console where a filter panel holds a dozen controls, so boxes are pulled
+ *     down to the 24–36px the application used before.
+ *
+ *   * **The type scale is the application's**, not Material's: the components
+ *     read `--md-sys-typescale-*` for size *and* line-height, and their 14px
+ *     Roboto defaults are what made the toolbar read as "wrong font".
+ *
+ *   * **No gradients, ever.** Verified rather than assumed: the library
+ *     stylesheet contains zero `gradient(` occurrences.
+ *
+ * Some library components render **inline styles** on plain elements (the
+ * segmented set does: `border-radius:999px`, a 1px `<div>` separator between
+ * segments, `font-size:14px`). Those cannot be reached by a normal rule, so the
+ * few declarations that must win are marked `!important` and commented as such —
+ * they are the only `!important` in this file.
+ * -------------------------------------------------------------------------- */
+
+:root {
+  /* ------------------------------------------------------------- shape */
+  --md-sys-shape-corner-none: 0;
+  --md-sys-shape-corner-extra-small: var(--dl-radius-xs);
+  --md-sys-shape-corner-small: var(--dl-radius-sm);
+  --md-sys-shape-corner-medium: var(--dl-radius-sm);
+  --md-sys-shape-corner-large: var(--dl-radius-md);
+  --md-sys-shape-corner-extra-large: var(--dl-radius-lg);
+  --md-sys-shape-corner-full: var(--dl-radius-full);
+
+  /* -------------------------------------------------------- typography */
+  /* Family: the app renders CJK, so the system stack has to win over Roboto. */
+  --md-sys-typescale-title-large-font: var(--dl-font-sans);
+  --md-sys-typescale-title-medium-font: var(--dl-font-sans);
+  --md-sys-typescale-title-small-font: var(--dl-font-sans);
+  --md-sys-typescale-body-large-font: var(--dl-font-sans);
+  --md-sys-typescale-body-medium-font: var(--dl-font-sans);
+  --md-sys-typescale-body-small-font: var(--dl-font-sans);
+  --md-sys-typescale-label-large-font: var(--dl-font-sans);
+  --md-sys-typescale-label-medium-font: var(--dl-font-sans);
+  --md-sys-typescale-label-small-font: var(--dl-font-sans);
+
+  /* Size and line-height: the components' own defaults are 14px/20px Roboto
+     metrics, noticeably larger than this console's 12–13px scale. */
+  --md-sys-typescale-title-large-size: 16px;
+  --md-sys-typescale-title-large-line-height: 22px;
+  --md-sys-typescale-title-medium-size: 14px;
+  --md-sys-typescale-title-medium-line-height: 20px;
+  --md-sys-typescale-title-small-size: 13px;
+  --md-sys-typescale-title-small-line-height: 18px;
+  --md-sys-typescale-body-large-size: 13px;
+  --md-sys-typescale-body-large-line-height: 18px;
+  --md-sys-typescale-body-medium-size: 13px;
+  --md-sys-typescale-body-medium-line-height: 18px;
+  --md-sys-typescale-body-small-size: 12px;
+  --md-sys-typescale-body-small-line-height: 16px;
+  --md-sys-typescale-label-large-size: 12px;
+  --md-sys-typescale-label-large-line-height: 16px;
+  --md-sys-typescale-label-large-weight: 500;
+  --md-sys-typescale-label-medium-size: 12px;
+  --md-sys-typescale-label-medium-line-height: 16px;
+  --md-sys-typescale-label-small-size: 11px;
+  --md-sys-typescale-label-small-line-height: 14px;
+
+  /* ------------------------------------------------------------ buttons */
+  /* Both the aggregate and the four corners: the aggregate alone leaves the
+     drawn surface at the default radius. */
+  --md-filled-button-container-shape: var(--dl-radius-control);
+  --md-filled-button-container-shape-start-start: var(--dl-radius-control);
+  --md-filled-button-container-shape-start-end: var(--dl-radius-control);
+  --md-filled-button-container-shape-end-start: var(--dl-radius-control);
+  --md-filled-button-container-shape-end-end: var(--dl-radius-control);
+  --md-outlined-button-container-shape: var(--dl-radius-control);
+  --md-outlined-button-container-shape-start-start: var(--dl-radius-control);
+  --md-outlined-button-container-shape-start-end: var(--dl-radius-control);
+  --md-outlined-button-container-shape-end-start: var(--dl-radius-control);
+  --md-outlined-button-container-shape-end-end: var(--dl-radius-control);
+  --md-text-button-container-shape: var(--dl-radius-control);
+  --md-text-button-container-shape-start-start: var(--dl-radius-control);
+  --md-text-button-container-shape-start-end: var(--dl-radius-control);
+  --md-text-button-container-shape-end-start: var(--dl-radius-control);
+  --md-text-button-container-shape-end-end: var(--dl-radius-control);
+  --md-elevated-button-container-shape: var(--dl-radius-control);
+  --md-elevated-button-container-shape-start-start: var(--dl-radius-control);
+  --md-elevated-button-container-shape-start-end: var(--dl-radius-control);
+  --md-elevated-button-container-shape-end-start: var(--dl-radius-control);
+  --md-elevated-button-container-shape-end-end: var(--dl-radius-control);
+  --md-filled-tonal-button-container-shape: var(--dl-radius-control);
+  --md-filled-tonal-button-container-shape-start-start: var(--dl-radius-control);
+  --md-filled-tonal-button-container-shape-start-end: var(--dl-radius-control);
+  --md-filled-tonal-button-container-shape-end-start: var(--dl-radius-control);
+  --md-filled-tonal-button-container-shape-end-end: var(--dl-radius-control);
+
+  --md-filled-button-container-height: 32px;
+  --md-outlined-button-container-height: 32px;
+  --md-text-button-container-height: 32px;
+  --md-elevated-button-container-height: 32px;
+  --md-filled-tonal-button-container-height: 32px;
+
+  --md-filled-button-label-text-size: 12px;
+  --md-filled-button-label-text-line-height: 16px;
+  --md-outlined-button-label-text-size: 12px;
+  --md-outlined-button-label-text-line-height: 16px;
+  --md-text-button-label-text-size: 12px;
+  --md-text-button-label-text-line-height: 16px;
+  --md-elevated-button-label-text-size: 12px;
+  --md-elevated-button-label-text-line-height: 16px;
+  --md-filled-tonal-button-label-text-size: 12px;
+  --md-filled-tonal-button-label-text-line-height: 16px;
+
+  --md-filled-button-leading-space: 12px;
+  --md-filled-button-trailing-space: 12px;
+  --md-outlined-button-leading-space: 12px;
+  --md-outlined-button-trailing-space: 12px;
+  --md-text-button-leading-space: 8px;
+  --md-text-button-trailing-space: 8px;
+
+  /* The ring has its own radius token; leaving it at the pill default is the
+     other half of the corner seam. */
+  --md-focus-ring-shape: var(--dl-radius-control);
+  --md-focus-ring-shape-start-start: var(--dl-radius-control);
+  --md-focus-ring-shape-start-end: var(--dl-radius-control);
+  --md-focus-ring-shape-end-start: var(--dl-radius-control);
+  --md-focus-ring-shape-end-end: var(--dl-radius-control);
+  --md-focus-ring-outward-offset: 1px;
+  --md-focus-ring-width: 2px;
+
+  /* ------------------------------------------------------- text fields */
+  --md-outlined-text-field-container-shape: var(--dl-radius-control);
+  --md-outlined-text-field-container-shape-start-start: var(--dl-radius-control);
+  --md-outlined-text-field-container-shape-start-end: var(--dl-radius-control);
+  --md-outlined-text-field-container-shape-end-start: var(--dl-radius-control);
+  --md-outlined-text-field-container-shape-end-end: var(--dl-radius-control);
+  --md-filled-text-field-container-shape: var(--dl-radius-control);
+  --md-outlined-text-field-top-space: 5px;
+  --md-outlined-text-field-bottom-space: 5px;
+  --md-outlined-text-field-input-text-size: 12px;
+  --md-outlined-text-field-input-text-line-height: 16px;
+  --md-outlined-text-field-label-text-size: 11px;
+  --md-outlined-text-field-label-text-line-height: 14px;
+  --md-outlined-text-field-outline-width: 1px;
+  --md-outlined-text-field-focus-outline-width: 2px;
+  --md-filled-text-field-top-space: 5px;
+  --md-filled-text-field-bottom-space: 5px;
+  --md-filled-text-field-input-text-size: 12px;
+  --md-filled-text-field-label-text-size: 11px;
+
+  /* ------------------------------------------------------------ selects */
+  --md-outlined-select-text-field-container-shape: var(--dl-radius-control);
+  --md-outlined-select-text-field-container-shape-start-start: var(--dl-radius-control);
+  --md-outlined-select-text-field-container-shape-start-end: var(--dl-radius-control);
+  --md-outlined-select-text-field-container-shape-end-start: var(--dl-radius-control);
+  --md-outlined-select-text-field-container-shape-end-end: var(--dl-radius-control);
+  --md-outlined-select-text-field-top-space: 5px;
+  --md-outlined-select-text-field-bottom-space: 5px;
+  --md-outlined-select-text-field-input-text-size: 12px;
+  --md-outlined-select-text-field-label-text-size: 11px;
+  --md-filled-select-text-field-top-space: 5px;
+  --md-filled-select-text-field-bottom-space: 5px;
+  --md-filled-select-text-field-input-text-size: 12px;
+  --md-filled-select-text-field-label-text-size: 11px;
+
+  /* -------------------------------------------------------------- chips */
+  --md-filter-chip-container-shape: var(--dl-radius-nested);
+  --md-filter-chip-container-shape-start-start: var(--dl-radius-nested);
+  --md-filter-chip-container-shape-start-end: var(--dl-radius-nested);
+  --md-filter-chip-container-shape-end-start: var(--dl-radius-nested);
+  --md-filter-chip-container-shape-end-end: var(--dl-radius-nested);
+  --md-filter-chip-container-height: 26px;
+  --md-filter-chip-label-text-size: 11px;
+  --md-filter-chip-label-text-line-height: 14px;
+  --md-filter-chip-leading-space: 8px;
+  --md-filter-chip-trailing-space: 10px;
+  --md-assist-chip-container-shape: var(--dl-radius-nested);
+  --md-assist-chip-container-height: 26px;
+  --md-assist-chip-label-text-size: 11px;
+  --md-input-chip-container-shape: var(--dl-radius-nested);
+  --md-input-chip-container-height: 26px;
+  --md-input-chip-label-text-size: 11px;
+
+  /* -------------------------------------------------------------- switch */
+  /* 52x32 is the phone size; scaled to 40x24, which is what a dense settings
+     row wants, while keeping the round track and handle the design calls for.
+     Height and width must be set *together*: `.selected .handle` reads
+     `--md-switch-selected-handle-width` (default 24px) for its width and
+     `--md-switch-selected-handle-height` for its height, so setting only the
+     height turned the handle into a 24x16 oval that hung over the track's edge. */
+  --md-switch-track-width: 40px;
+  --md-switch-track-height: 24px;
+  --md-switch-track-shape: var(--dl-radius-full);
+  --md-switch-track-shape-start-start: var(--dl-radius-full);
+  --md-switch-track-shape-start-end: var(--dl-radius-full);
+  --md-switch-track-shape-end-start: var(--dl-radius-full);
+  --md-switch-track-shape-end-end: var(--dl-radius-full);
+  --md-switch-handle-width: 16px;
+  --md-switch-handle-height: 16px;
+  --md-switch-handle-shape: var(--dl-radius-full);
+  --md-switch-handle-shape-start-start: var(--dl-radius-full);
+  --md-switch-handle-shape-start-end: var(--dl-radius-full);
+  --md-switch-handle-shape-end-start: var(--dl-radius-full);
+  --md-switch-handle-shape-end-end: var(--dl-radius-full);
+  --md-switch-selected-handle-width: 16px;
+  --md-switch-selected-handle-height: 16px;
+  --md-switch-pressed-handle-width: 20px;
+  --md-switch-pressed-handle-height: 20px;
+  --md-switch-with-icon-handle-width: 16px;
+  --md-switch-with-icon-handle-height: 16px;
+  --md-switch-icon-size: 12px;
+  --md-switch-selected-icon-size: 12px;
+  --md-switch-state-layer-size: 24px;
+
+  /* ------------------------------------------------------ cards and misc */
+  --md-outlined-card-container-shape: var(--dl-radius-surface);
+  --md-outlined-card-container-shape-start-start: var(--dl-radius-surface);
+  --md-outlined-card-container-shape-start-end: var(--dl-radius-surface);
+  --md-outlined-card-container-shape-end-start: var(--dl-radius-surface);
+  --md-outlined-card-container-shape-end-end: var(--dl-radius-surface);
+  --md-outlined-card-outline-width: 1px;
+  --md-elevated-card-container-shape: var(--dl-radius-surface);
+  --md-filled-card-container-shape: var(--dl-radius-surface);
+  --md-divider-thickness: 1px;
+
+  /* Menus (the select popup) keep the surface radius and a hairline. */
+  --md-menu-container-shape: var(--dl-radius-surface);
+  --md-menu-container-color: var(--md-sys-color-surface-container-low);
+  --md-menu-item-one-line-container-height: 34px;
+  --md-menu-item-label-text-size: 12px;
+}
+
+/* =============================================================================
+ * Element-level layout
+ * ========================================================================== */
+
+md-outlined-text-field,
+md-filled-text-field,
+md-outlined-select,
+md-filled-select {
+  display: block;
+  width: 100%;
+  /* The component ships `min-width: 210px` on the select host. A select almost
+     always shares its row here — the "new rule" row puts a field select and an
+     operator select side by side in a 270px panel — and a 210px floor made that
+     row 428px wide, so it painted straight over the card border and gave the
+     panel a horizontal scrollbar. The flex ratios come from
+     `.dl-rule__field` / `.dl-rule__op`; this only removes the floor. */
+  min-width: 0;
+}
+
+/* ---------------------------------------------------------------------------
+ * Segmented button sets
+ *
+ * The component renders *inline styles* on a plain `<div>` group and on its
+ * `<button>` children: a 999px pill with `overflow: hidden`, a 1px `<div>`
+ * separator between segments, square corners on the selected segment, and a
+ * 14px label. Restyling therefore needs `!important` — it is the only way to
+ * beat an inline declaration, and it is deliberate here.
+ *
+ * The look this produces: the group keeps the control radius, the selected
+ * segment gets the nested (smaller) radius so the two stay concentric, and the
+ * hard vertical separator becomes an invisible spacer — selection is then read
+ * from the rounded fill instead of from a line.
+ * ------------------------------------------------------------------------- */
+.dl-segmented {
+  border-radius: var(--dl-radius-control) !important;
+  gap: 2px !important;
+  background: var(--md-sys-color-surface-container-low) !important;
+  border-color: var(--md-sys-color-outline-variant) !important;
+}
+
+.dl-segmented > button {
+  font: var(--dl-type-label-medium) !important;
+  padding: 0 12px !important;
+  border-radius: var(--dl-radius-nested) !important;
+  color: var(--dl-on-surface-variant);
+  /* The component writes `min-width: 92px` inline on every segment, which makes
+     a two-character label occupy as much room as a four-character one and is
+     what pushed the toolbar past the window width. Segments hug their label. */
+  min-width: 0 !important;
+  /* 12px of icon-to-label gap for a 14px glyph is mostly empty space. */
+  gap: 6px !important;
+  /* The selected fill slides in rather than snapping. */
+  transition:
+    background-color 160ms ease,
+    color 160ms ease;
+}
+
+/* The selected check mark: sized down to the label's scale. */
+.dl-segmented md-icon {
+  font-size: 14px !important;
+  width: 14px !important;
+  height: 14px !important;
+}
+
+/* The separator: kept as spacing, stripped of its line. */
+.dl-segmented > div {
+  width: 2px;
+  background: transparent !important;
+  border: none !important;
+}
+
+.dl-segmented > button[aria-pressed='true'] {
+  background: var(--md-sys-color-secondary-container) !important;
+  color: var(--md-sys-color-on-secondary-container) !important;
+  font-weight: 500 !important;
+}
+
+.dl-segmented > button:hover:not([aria-pressed='true']) {
+  background: var(--dl-hover-overlay) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dl-segmented > button {
+    transition: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Toolbar
+ * ------------------------------------------------------------------------- */
+.dl-toolbar {
+  --mer-toolbar-thickness: var(--dl-toolbar-height);
+  --mer-toolbar-docked-shape: 0;
+  --mer-toolbar-floating-shape: 0;
+  --mer-toolbar-padding: 0 var(--dl-space-3);
+  --mer-toolbar-gap: var(--dl-space-2);
+  --mer-toolbar-container-color: var(--md-sys-color-surface);
+  --mer-toolbar-docked-shadow: none;
+  --mer-toolbar-floating-shadow: none;
+  display: flex;
+  width: 100%;
+  /* One row, always. Letting this wrap put the two theme switchers on separate
+     lines *on top of each other* inside a fixed-height bar. */
+  flex-wrap: nowrap;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+  overflow: hidden;
+}
+
+.dl-toolbar__left,
+.dl-toolbar__right {
+  display: flex;
+  align-items: center;
+  gap: var(--dl-space-2);
+  min-width: 0;
+}
+
+.dl-toolbar__right {
+  justify-content: flex-end;
+}
+
+/* Controls keep their intrinsic width. A shrinking flex item squeezes the
+   button below the width its own label needs, and the label then spills outside
+   the box — which is what "the text overflows the button" was. */
+.dl-toolbar__left > *,
+.dl-toolbar__right > * {
+  flex: none;
+}
+
+/* The two clusters that are allowed to give way, and how they give way. */
+.dl-toolbar__context {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.dl-toolbar__context > * {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dl-toolbar__stats {
+  flex: 0 1 auto !important;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* The theme switchers sit side by side. This element previously had no styling
+   at all, so it was a block box and its two inline-flex children stacked. */
+.dl-toolbar__themes {
+  display: flex;
+  align-items: center;
+  gap: var(--dl-space-2);
+  flex: none;
+}
+
+/* Narrow-window behaviour lives in app.css, next to the rules that set these
+   elements' `display`. Putting `@media { .dl-toolbar__context { display: none } }`
+   here instead did nothing at all: app.css is imported after this file, so its
+   `.dl-toolbar__context { display: flex }` won on equal specificity and the
+   device context never hid — which is how the row ended up over capacity and the
+   statistics span got squeezed to nothing. */
+
+/* ---------------------------------------------------------------------------
+ * Level chips and the switch row
+ * ------------------------------------------------------------------------- */
+/* The chip's leading letter is plain markup, not a slotted icon, so the chip's
+   own icon-to-label spacing does not apply. */
+.dl-level-chip > span:first-child {
+  margin-inline-end: 5px;
+  font-weight: 600;
+}
+
+.dl-chip-label,
+.dl-switch-row__text {
+  white-space: nowrap;
+}
+
+/* A plain settings row: the switch and its label, with no box around them. */
+.dl-switch-row {
+  display: flex;
+  align-items: center;
+  gap: var(--dl-space-2);
+  min-height: 24px;
+  font: var(--dl-type-label-medium);
+  color: var(--dl-on-surface-variant);
+  cursor: pointer;
+}
+
+/* ---------------------------------------------------------------------------
+ * Snackbar
+ * ------------------------------------------------------------------------- */
+.dl-snackbar {
+  --mer-snackbar-container-shape: var(--dl-radius-surface);
+  --mer-snackbar-container-color: var(--md-sys-color-inverse-surface);
+  --mer-snackbar-supporting-text-color: var(--md-sys-color-inverse-on-surface);
+  --mer-snackbar-action-color: var(--md-sys-color-inverse-primary);
+  position: fixed;
+  inset-inline-start: var(--dl-space-4);
+  inset-block-end: var(--dl-space-4);
+  z-index: 20;
+  max-width: 60ch;
+}

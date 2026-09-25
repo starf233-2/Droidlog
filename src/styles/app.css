@@ -1,0 +1,909 @@
+/* =============================================================================
+ * droidlog -- application layout
+ *
+ * Structure:
+ *   .dl-app
+ *     .dl-toolbar                 (fixed height)
+ *     .dl-app__body               (3 columns)
+ *       .dl-rail                  (devices + sources)
+ *       .dl-logs                  (log table)
+ *       .dl-filters               (filter rules)
+ *
+ * Layering is expressed with surface-container tones and 1px outline-variant
+ * dividers. Shadows appear only on the two raised chrome edges (toolbar and
+ * filter panel) and use the faintest neutral token.
+ * ========================================================================== */
+
+.dl-app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background-color: var(--dl-background);
+  color: var(--dl-on-surface);
+}
+
+.dl-app__body {
+  display: grid;
+  grid-template-columns: var(--dl-rail-width) minmax(0, 1fr) var(--dl-filter-width);
+  flex: 1;
+  min-height: 0;
+  /* One gutter around the three panes, so their rounded corners are visible on
+     all four sides. Before this only the rail's cards were rounded while the
+     other two panes ran flat into the window edge — which is what "左侧下方有
+     圆角，右边直接截断了" was: three columns, only one of them a card. */
+  padding: var(--dl-space-2);
+  gap: var(--dl-space-2);
+}
+
+/* Every column is the same object: a rounded, hairline-bordered, slightly raised
+   pane. Only what lives inside differs. */
+.dl-rail,
+.dl-logs-column,
+.dl-filters {
+  border: 1px solid var(--dl-outline-variant);
+  border-radius: var(--dl-radius-surface);
+  box-shadow: var(--dl-shadow-1);
+  overflow: hidden;
+}
+
+/* The middle column: the log table, with the collection report docked under it.
+   A plain flex column, so neither child can float over the other or over the
+   toolbar. */
+.dl-logs-column {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background-color: var(--dl-surface);
+}
+
+.dl-logs-column > .dl-logs {
+  flex: 1;
+  min-height: 0;
+}
+
+/* =============================================================================
+ * Toolbar
+ * ========================================================================== */
+
+.dl-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--dl-space-4);
+  height: var(--dl-toolbar-height);
+  padding: 0 var(--dl-space-4);
+  background-color: var(--dl-surface-container-low);
+  border-bottom: 1px solid var(--dl-outline-variant);
+  box-shadow: var(--dl-shadow-1);
+  flex: none;
+  /* A single row by contract. The shrinkable parts are the text elements (see
+     `.dl-toolbar__stats` / `.dl-toolbar__context`), so this never has to clip a
+     button away — hiding an action would be worse than a few stray pixels. */
+  min-width: 0;
+  flex-wrap: nowrap;
+}
+
+.dl-toolbar__left,
+.dl-toolbar__right {
+  display: flex;
+  /* One baseline for every text in the bar. `align-items: center` centres each
+     *line box*, and since the bar mixes 16px (brand), 14px (device name) and
+     11.5px (serial) text, that left the baselines up to 1.2px apart — which is
+     exactly what "标题与设备名称未对齐像素" was. */
+  align-items: baseline;
+  gap: var(--dl-space-3);
+  min-width: 0;
+}
+
+
+.dl-toolbar__right > .dl-segmented,
+.dl-toolbar__left > .dl-segmented,
+.dl-toolbar__left > .dl-chip,
+.dl-toolbar__left > .dl-divider {
+  flex: none;
+}
+
+.dl-toolbar__brand {
+  font: var(--dl-type-title-medium);
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  color: var(--dl-on-surface);
+  flex: none;
+}
+
+.dl-toolbar__context {
+  display: flex;
+  /* Baseline, not centre: the device name (14px), its serial (11.5px mono) and
+     the chips on this line all sit on the bar's one baseline. */
+  align-items: baseline;
+  gap: var(--dl-space-2);
+  min-width: 0;
+  overflow: hidden;
+}
+
+.dl-toolbar__device {
+  font: var(--dl-type-title-small);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+
+.dl-toolbar__serial {
+  font-size: 11.5px;
+  color: var(--dl-on-surface-variant);
+  white-space: nowrap;
+}
+
+.dl-toolbar__hint {
+  font: var(--dl-type-label-medium);
+  color: var(--dl-on-surface-variant);
+  white-space: nowrap;
+}
+
+.dl-toolbar__stats {
+  font: var(--dl-type-label-medium);
+  color: var(--dl-on-surface-variant);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+/*
+ * Narrow windows: buy room by dropping decorations, never by squeezing controls.
+ *
+ * These rules have to live *after* the two `display` declarations above — they
+ * override them on equal specificity. They were in material-bridge.css first,
+ * where app.css's later `display: flex` on `.dl-toolbar__context` silently won,
+ * so the device context never hid, the row ran out of capacity and the
+ * statistics span was squeezed down to zero width.
+ *
+ * Measured at the window's 1080px minimum: left 267px + right 642px = 909px of
+ * 1080px, nothing clipped, both theme switchers on one row.
+ */
+@media (max-width: 1280px) {
+  .dl-toolbar__brand {
+    display: none;
+  }
+}
+
+@media (max-width: 1150px) {
+  .dl-toolbar__context {
+    display: none;
+  }
+}
+
+/* =============================================================================
+ * Left rail -- devices and sources
+ * ========================================================================== */
+
+.dl-rail {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  /* The pane border, radius and shadow come from the shared three-pane rule; the
+     rail only adds the inset its own two cards need. */
+  padding: var(--dl-space-2);
+  gap: var(--dl-space-2);
+  background-color: var(--dl-surface-container-low);
+}
+
+/*
+ * 设备 / 采集源 are cards, using the *same contract* as the filter panel's
+ * `.dl-panel__section`: hairline `outline-variant`, `radius-control`, 12px of
+ * gutter (8 outer + 4 inner here, because these groups own a scrolling body).
+ * Depth comes from the tone + outline, never from a gradient.
+ */
+.dl-rail__section {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: 52%;
+  padding: var(--dl-space-2);
+  border: 1px solid var(--dl-outline-variant);
+  border-radius: var(--dl-radius-control);
+  background-color: transparent;
+  /* Keeps the scrolling body inside the rounded corners. */
+  overflow: hidden;
+}
+
+.dl-rail__section--grow {
+  flex: 1;
+  max-height: none;
+}
+
+.dl-rail__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--dl-space-2);
+  /* No horizontal padding: the group title sits on the card's content edge, which
+     is also where the toolbar's brand sits (16.8 vs 16 CSS px), so the left
+     column reads as one vertical line. */
+  padding: var(--dl-space-1) 0 var(--dl-space-2);
+}
+
+.dl-rail__title {
+  font: var(--dl-type-label-large);
+  font-weight: 600;
+  color: var(--dl-on-surface-variant);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  font-size: 11.5px;
+}
+
+.dl-rail__action {
+  min-height: 28px;
+  padding: 0 var(--dl-space-2);
+  font: var(--dl-type-label-medium);
+}
+
+.dl-rail__body {
+  flex: 1;
+  min-height: 0;
+  padding: 0 var(--dl-space-1) var(--dl-space-1);
+  /* No scrollbar and no reserved gutter. The rail holds a handful of rows, and
+     reserving space for a bar that is almost never there is not symmetric — it
+     is two invisible 10px gaps, which is what made the device card's own inset
+     look arbitrary (12.8px before, 23.2px with `both-edges`). The list still
+     scrolls with the wheel; the rows are the affordance. */
+  scrollbar-gutter: auto;
+  scrollbar-width: none;
+}
+
+.dl-rail__body::-webkit-scrollbar {
+  display: none;
+}
+
+/* The cards are the separator now: a rule between two outlined boxes would be a
+   third edge in the same 8px gap. */
+.dl-rail > .dl-divider {
+  display: none;
+}
+
+.dl-rail__note {
+  margin-top: var(--dl-space-1);
+  padding: var(--dl-space-2);
+  font: var(--dl-type-label-small);
+  color: var(--dl-level-warn);
+  background-color: var(--dl-level-warn-bg);
+  border-radius: var(--dl-radius-nested);
+  flex: none;
+}
+
+.dl-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* -- device row ----------------------------------------------------------- */
+
+.dl-device {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--dl-space-2);
+  width: 100%;
+  padding: var(--dl-space-2);
+  text-align: left;
+  border: 1px solid transparent;
+  border-radius: var(--dl-radius-control);
+  color: var(--dl-on-surface);
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+.dl-device:hover {
+  background-color: var(--dl-hover-overlay);
+}
+
+.dl-device[aria-pressed='true'] {
+  background-color: var(--dl-primary-container);
+  border-color: var(--dl-primary);
+  color: var(--dl-on-primary-container);
+}
+
+.dl-device__dot {
+  width: 8px;
+  height: 8px;
+  margin-top: 6px;
+  border-radius: var(--dl-radius-full);
+  flex: none;
+}
+
+.dl-device__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.dl-device__name {
+  font: var(--dl-type-body-large);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dl-device__meta {
+  font-size: 11.5px;
+  color: var(--dl-on-surface-variant);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dl-device[aria-pressed='true'] .dl-device__meta {
+  color: var(--dl-on-primary-container);
+  opacity: 0.8;
+}
+
+.dl-device__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--dl-space-1);
+  margin-top: 2px;
+}
+
+/* -- source row ---------------------------------------------------------- */
+
+.dl-source {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+  padding: var(--dl-space-2);
+  text-align: left;
+  border: 1px solid transparent;
+  border-radius: var(--dl-radius-control);
+  color: var(--dl-on-surface);
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+.dl-source:hover:not(:disabled) {
+  background-color: var(--dl-hover-overlay);
+}
+
+.dl-source[aria-pressed='true'] {
+  background-color: var(--dl-primary-container);
+  border-color: var(--dl-primary);
+  color: var(--dl-on-primary-container);
+}
+
+.dl-source:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.dl-source__head {
+  display: flex;
+  align-items: center;
+  gap: var(--dl-space-2);
+}
+
+.dl-source__label {
+  font: var(--dl-type-body-large);
+  font-weight: 600;
+}
+
+.dl-source__desc {
+  font: var(--dl-type-label-medium);
+  color: var(--dl-on-surface-variant);
+  line-height: 16px;
+}
+
+.dl-source[aria-pressed='true'] .dl-source__desc {
+  color: var(--dl-on-primary-container);
+  opacity: 0.85;
+}
+
+.dl-source__cmd {
+  font-size: 11px;
+  color: var(--dl-on-surface-variant);
+  opacity: 0.85;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dl-source__blocked {
+  font: var(--dl-type-label-small);
+  color: var(--dl-level-warn);
+}
+
+.dl-source[aria-pressed='true'] .dl-source__blocked {
+  color: var(--dl-on-primary-container);
+}
+
+/* =============================================================================
+ * Centre -- log table
+ * ========================================================================== */
+
+.dl-logs {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  /* Row height is mirrored by ROW_HEIGHT in LogTable.tsx; the virtualiser's
+     spacer arithmetic depends on the two agreeing. */
+  --dl-log-row-height: 22px;
+  /* Fallback; LogTable publishes the live values from its COLUMNS array.
+     Minimums sum to 432px, which with the 16px gutters and 24px padding stays
+     inside the narrowest pane (the layout tightens below 1200 CSS px), so the
+     message column is never squeezed away. */
+  --dl-log-column-gap: 16px;
+  --dl-log-columns: 40px minmax(80px, 130px) minmax(44px, 58px) minmax(44px, 58px)
+    minmax(60px, 130px) minmax(52px, 72px) minmax(112px, 1fr);
+}
+
+.dl-logs__head {
+  display: grid;
+  grid-template-columns: var(--dl-log-columns);
+  align-items: center;
+  /* Shared with the rows so the header always sits over its column. */
+  column-gap: var(--dl-log-column-gap);
+  padding: var(--dl-space-2) var(--dl-space-3);
+  background-color: var(--dl-surface-container);
+  border-bottom: 1px solid var(--dl-outline-variant);
+  flex: none;
+}
+
+.dl-logs__head-cell {
+  font: var(--dl-type-label-small);
+  font-weight: 600;
+  color: var(--dl-on-surface-variant);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.dl-logs__scroller {
+  flex: 1;
+  min-height: 0;
+  background-color: var(--dl-surface-container-lowest);
+  /* Chromium's scroll anchoring tries to keep the visible rows stable when the
+     content above them changes size. In a virtualised list the spacers above the
+     window change size on *every* batch, and the browser's compensation fights
+     the follow animation: measured, it dragged the scrollport ~2 500px off the
+     bottom and the drift looked exactly like the user scrolling away. */
+  overflow-anchor: none;
+}
+
+.dl-logs__placeholder {
+  padding: var(--dl-space-6);
+}
+
+.dl-logs__foot {
+  display: flex;
+  align-items: center;
+  gap: var(--dl-space-3);
+  padding: var(--dl-space-1) var(--dl-space-3);
+  min-height: 30px;
+  background-color: var(--dl-surface-container);
+  border-top: 1px solid var(--dl-outline-variant);
+  flex: none;
+}
+
+.dl-logs__foot-item {
+  font: var(--dl-type-label-small);
+  color: var(--dl-on-surface-variant);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dl-logs__foot-item:last-of-type {
+  min-width: 0;
+}
+
+.dl-logs__follow {
+  margin-left: auto;
+  min-height: 24px;
+  padding: 0 var(--dl-space-2);
+  font: var(--dl-type-label-small);
+  flex: none;
+}
+
+/* -- log row ------------------------------------------------------------- */
+
+.dl-log-row {
+  display: grid;
+  grid-template-columns: var(--dl-log-columns);
+  column-gap: var(--dl-log-column-gap);
+  align-items: center;
+  padding: 0 var(--dl-space-3);
+  border-bottom: 1px solid var(--dl-surface-container);
+  /* Height is set inline from ROW_HEIGHT so the virtualiser's maths holds. */
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+/* Unparsed lines: dimmed and marked, never hidden. */
+.dl-log-row--raw {
+  color: var(--dl-on-surface-variant);
+  opacity: 0.75;
+}
+
+.dl-log-row:hover {
+  background-color: var(--dl-hover-overlay);
+}
+
+.dl-log-row > span {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dl-log-row__level {
+  font-weight: 700;
+  font-size: 11.5px;
+}
+
+.dl-log-row__time,
+.dl-log-row__num {
+  color: var(--dl-on-surface-variant);
+  font-size: 11.5px;
+}
+
+.dl-log-row__tag {
+  color: var(--dl-level-debug);
+}
+
+.dl-log-row__session {
+  color: var(--dl-on-surface-variant);
+  font-size: 11px;
+  opacity: 0.85;
+}
+
+.dl-log-row__message {
+  color: var(--dl-on-surface);
+}
+
+/* Session chips in the log footer. */
+.dl-session {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--dl-space-1);
+  height: 22px;
+  padding: 0 var(--dl-space-1) 0 var(--dl-space-2);
+  border: 1px solid var(--dl-outline-variant);
+  border-radius: var(--dl-radius-nested);
+  background-color: var(--dl-surface-container);
+  font: var(--dl-type-label-small);
+  color: var(--dl-on-surface-variant);
+  flex: none;
+  max-width: 220px;
+}
+
+.dl-session__label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Per-session stop control.
+ *
+ * It is a Material text button now, so its box comes from the component's own
+ * tokens rather than from `width`/`height` here — setting those on the host
+ * squashed the label. The 18px target the old rule justified is kept through the
+ * container height instead, and hover feedback is left to the component's state
+ * layer so the row does not get two competing highlights. */
+.dl-session__stop {
+  --md-text-button-container-height: 20px;
+  --md-text-button-leading-space: 6px;
+  --md-text-button-trailing-space: 6px;
+  --md-text-button-label-text-size: 11px;
+  flex: none;
+  min-width: 0;
+  color: var(--dl-on-surface-variant);
+}
+
+/* Custom-command field in the rail. */
+.dl-customcmd {
+  display: flex;
+  flex-direction: column;
+  gap: var(--dl-space-1);
+  padding: var(--dl-space-2);
+  margin-top: var(--dl-space-2);
+  border-top: 1px solid var(--dl-outline-variant);
+}
+
+
+
+.dl-customcmd__input {
+  width: 100%;
+  font-size: 11.5px;
+}
+
+.dl-customcmd__hint {
+  font: var(--dl-type-label-small);
+  line-height: 15px;
+  color: var(--dl-on-surface-variant);
+}
+
+/* Per-level colouring: text tone only. No background fills, no borders, so a
+   table dense with ERROR rows still reads as a calm surface. */
+.dl-level--verbose {
+  color: var(--dl-level-verbose);
+}
+
+.dl-level--debug {
+  color: var(--dl-level-debug);
+}
+
+.dl-level--info {
+  color: var(--dl-level-info);
+}
+
+.dl-level--warn {
+  color: var(--dl-level-warn);
+}
+
+.dl-level--error {
+  color: var(--dl-level-error);
+}
+
+.dl-level--fatal {
+  color: var(--dl-level-fatal);
+}
+
+.dl-level--unknown {
+  color: var(--dl-level-unknown);
+}
+
+/* =============================================================================
+ * Right -- filter panel
+ *
+ * Outlined M3 throughout: transparent surfaces, one hairline outline, no fills
+ * and no gradients. Depth comes from the panel's own container tone.
+ * ========================================================================== */
+
+.dl-filters {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  /* Pane chrome comes from the shared three-pane rule; see `.dl-rail`. */
+  background-color: var(--dl-surface-container-low);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+.dl-levels {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--dl-space-2);
+}
+
+/* Panel section scaffolding. */
+.dl-panel__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--dl-space-2);
+  padding: var(--dl-space-3);
+  border: 1px solid var(--dl-outline-variant);
+  border-radius: var(--dl-radius-control);
+  background-color: transparent;
+}
+
+.dl-panel__label {
+  font: var(--dl-type-label-large);
+  font-weight: 600;
+  font-size: 11.5px;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--dl-on-surface-variant);
+}
+
+.dl-panel__hint {
+  font: var(--dl-type-label-small);
+  line-height: 15px;
+  color: var(--dl-on-surface-variant);
+}
+
+.dl-target__row {
+  display: flex;
+  align-items: center;
+  gap: var(--dl-space-2);
+}
+
+.dl-target__input {
+  flex: 1;
+}
+
+
+
+
+
+.dl-target__result {
+  display: flex;
+  flex-direction: column;
+  gap: var(--dl-space-1);
+}
+
+.dl-target__chip {
+  align-self: flex-start;
+  max-width: 100%;
+  height: auto;
+  min-height: 24px;
+  padding: var(--dl-space-1) var(--dl-space-2);
+  white-space: normal;
+  font-size: 11px;
+  line-height: 15px;
+  text-align: left;
+}
+
+/* The one place a negative result is shown; kept as text, not a red banner,
+   because "the app is closed" is a normal state rather than a failure. */
+.dl-target__missing {
+  align-self: flex-start;
+  padding: var(--dl-space-1) var(--dl-space-2);
+  border: 1px solid var(--dl-level-warn);
+  border-radius: var(--dl-radius-control);
+  color: var(--dl-level-warn);
+  font: var(--dl-type-label-medium);
+}
+
+.dl-filters__header {
+  display: flex;
+  align-items: center;
+  gap: var(--dl-space-2);
+  /* Panel gutter + list padding + the 1px card border: `过滤` lands on the
+     section labels' left edge, so the panel reads as one column of text with the
+     cards' outlines sticking out. No scrollbar term here — the list's bar only
+     ever takes space on the *right*. */
+  padding: var(--dl-space-3) var(--dl-space-3) var(--dl-space-2)
+    calc(var(--dl-space-3) + var(--dl-space-2) + 1px);
+}
+
+.dl-filters__title {
+  font: var(--dl-type-label-large);
+  font-weight: 600;
+  color: var(--dl-on-surface-variant);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  font-size: 11.5px;
+}
+
+.dl-filters__list {
+  flex: 1;
+  min-height: 0;
+  padding: 0 var(--dl-space-2) var(--dl-space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--dl-space-2);
+  /* This list genuinely scrolls (six cards, always taller than the panel), so
+     its bar is allowed to take its own space — a visible bar explains the inset.
+     What it must not do is reserve a *phantom* one on both edges. */
+  scrollbar-gutter: auto;
+}
+
+.dl-filters__error {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0 var(--dl-space-3) var(--dl-space-2);
+  padding: var(--dl-space-2);
+  border: 1px solid var(--dl-error);
+  border-radius: var(--dl-radius-control);
+  background-color: var(--dl-error-container);
+  color: var(--dl-on-error-container);
+  font: var(--dl-type-label-small);
+}
+
+.dl-filters__add-row {
+  display: flex;
+  gap: var(--dl-space-2);
+  align-items: center;
+}
+
+
+
+.dl-filters__add-input {
+  flex: 1;
+  min-width: 0;
+}
+
+/* -- rule row ------------------------------------------------------------ */
+
+.dl-rule {
+  display: flex;
+  flex-direction: column;
+  gap: var(--dl-space-2);
+  padding: var(--dl-space-2);
+  border: 1px solid var(--dl-outline-variant);
+  border-radius: var(--dl-radius-control);
+}
+
+.dl-rule__head {
+  display: flex;
+  align-items: center;
+  gap: var(--dl-space-2);
+}
+
+/* 删除贴右边：它是这张卡上唯一作用于整条规则的动作。 */
+.dl-rule__remove {
+  margin-left: auto;
+}
+
+/* 字段与比较方式各自成行：面板内容宽 227px，一行放不下「开关 + 两个下拉 + 删除」，
+   硬挤会让标签折行、箭头画出边框（实测 39px / 51px）。 */
+.dl-rule__row {
+  display: flex;
+  align-items: center;
+  gap: var(--dl-space-2);
+}
+
+.dl-rule__field {
+  flex: 1;
+  min-width: 0;
+}
+
+.dl-rule__op {
+  flex: 1.3;
+  min-width: 0;
+}
+
+.dl-rule__remove {
+  flex: none;
+  min-height: 26px;
+  padding: 0 var(--dl-space-1);
+  font-size: 12px;
+  color: var(--dl-on-surface-variant);
+}
+
+.dl-rule__value {
+  display: flex;
+  align-items: center;
+  gap: var(--dl-space-2);
+}
+
+.dl-rule__input {
+  flex: 1;
+  min-width: 0;
+}
+
+.dl-rule__case {
+  display: flex;
+  align-items: center;
+  gap: var(--dl-space-1);
+  font: var(--dl-type-label-small);
+  color: var(--dl-on-surface-variant);
+  white-space: nowrap;
+  flex: none;
+}
+
+
+
+/* =============================================================================
+ * Narrow windows: collapse the rail and filter panel widths first.
+ * ========================================================================== */
+
+@media (max-width: 1200px) {
+  .dl-app__body {
+    grid-template-columns: 232px minmax(0, 1fr) 280px;
+  }
+}
