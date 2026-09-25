@@ -306,9 +306,7 @@ cargo tauri build              # 打包安装包
 
 ## 许可与致谢
 
-- 本项目源码：尚未指定开源许可，如需公开请补一份 `LICENSE`。
+- Apache-2.0许可。
 - `platform-tools/`（adb.exe、AdbWinApi.dll 等）来自 Google Android SDK Platform-Tools，按其随附 `NOTICE.txt` 分发。
 - 界面组件：[`material-expressive-react`](https://www.npmjs.com/package/material-expressive-react) 与 [`@material/web`](https://github.com/material-components/material-web)（Apache-2.0）。
 - 字体：[Roboto](https://fonts.google.com/specimen/Roboto) 与 [Noto Sans SC](https://fonts.google.com/noto/specimen/Noto+Sans+SC)（SIL Open Font License 1.1）。
-
-架构设计、协议细节与踩坑记录见 **[docs/DESIGN.md](docs/DESIGN.md)**（原 README，含执行器、解析器、环形缓冲、过滤引擎、打包、主题引擎、崩溃采集等 12 章）。
