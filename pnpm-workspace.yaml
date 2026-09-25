@@ -1,0 +1,4 @@
+# pnpm 11 configuration. esbuild's install script links the platform binary that
+# vite invokes, so it must be allowed to run.
+allowBuilds:
+  esbuild: true
