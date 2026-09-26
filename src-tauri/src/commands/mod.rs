@@ -7,7 +7,7 @@
 //! Argument naming follows Tauri's default: Rust `snake_case` parameters are
 //! invoked from TypeScript as `camelCase`.
 
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 
 use crate::adb::{locate, locate::AdbSource, Adb};
 use crate::collect;
@@ -15,6 +15,7 @@ use crate::device::resolve::{self, AppTarget, RunningApp};
 use crate::device::{self, DeviceInfo};
 use crate::error::Result;
 use crate::executor::ExecMode;
+use crate::export::{self, ExportFormat, ExportOutcome};
 use crate::filter::FilterRule;
 use crate::parser::LogRecord;
 use crate::process::{self, CaptureRequest, CaptureSession, SessionSummary};
@@ -379,4 +380,41 @@ pub fn drain_records(
     limit: Option<usize>,
 ) -> Result<Vec<LogRecord>> {
     state.session_records(&session_id, limit)
+}
+
+/// Writes collected rows to a file under the user's downloads folder.
+///
+/// Formatting happens in the frontend, which holds the rows and knows what is on
+/// screen; this side owns the destination, the file name and the encoding, so
+/// there is only ever one definition of "the exported line".
+///
+/// # Errors
+///
+/// Returns [`crate::error::DroidLogError::InvalidInput`] for an unwritable
+/// destination or a name that does not match the format.
+#[tauri::command]
+pub fn export_records(
+    app: AppHandle,
+    content: String,
+    format: ExportFormat,
+    file_name: String,
+) -> Result<ExportOutcome> {
+    let dir = export::export_dir(app.path().download_dir().ok());
+    let name = export::sanitize_file_name(&file_name, format);
+    export::write(&dir, &name, &content, format)
+}
+
+/// Opens the file manager with an exported file selected.
+///
+/// The notice reporting the path is not selectable text (only logs are), so this
+/// is how the user actually gets to the file.
+///
+/// # Errors
+///
+/// Returns [`crate::error::DroidLogError::InvalidInput`] when the path is
+/// missing or lies outside the export folder.
+#[tauri::command]
+pub fn reveal_export(app: AppHandle, path: String) -> Result<()> {
+    let dir = export::export_dir(app.path().download_dir().ok());
+    export::reveal(&dir, std::path::Path::new(&path))
 }

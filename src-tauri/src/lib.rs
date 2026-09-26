@@ -39,6 +39,7 @@ pub mod crash;
 pub mod device;
 pub mod error;
 pub mod executor;
+pub mod export;
 pub mod filter;
 pub mod parser;
 pub mod process;
@@ -119,6 +120,8 @@ pub fn run() {
         commands::collect_boot,
         commands::collect_recovery,
         commands::get_collect_report,
+        commands::export_records,
+        commands::reveal_export,
         ])
         .setup(|app| {
             // Register the bundled-resource directory before anything resolves

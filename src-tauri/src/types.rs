@@ -14,6 +14,7 @@ pub use crate::crash::CrashKind;
 pub use crate::device::{DeviceInfo, DeviceProbe, DeviceState};
 pub use crate::error::DroidLogError;
 pub use crate::executor::{ExecMode, ExecOutput};
+pub use crate::export::{ExportFormat, ExportOutcome};
 pub use crate::filter::{FilterField, FilterOp, FilterRule};
 pub use crate::parser::{LogLevel, LogRecord};
 pub use crate::process::{

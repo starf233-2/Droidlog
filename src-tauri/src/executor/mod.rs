@@ -47,6 +47,28 @@ fn command_for(plan: &CommandPlan) -> Command {
     command
 }
 
+/// Starts a local program and does not wait for it.
+///
+/// For host-side helpers that are not device commands — opening a folder in the
+/// file manager, for instance. It lives here so that it goes through
+/// [`command_for`] like every other spawn and therefore keeps the console
+/// suppression: a flashing black window is exactly the bug this module exists to
+/// prevent, and a new spawn path is how it would come back.
+///
+/// # Errors
+///
+/// Returns [`DroidLogError::Spawn`] when the program cannot be started.
+pub fn spawn_detached(program: &str, args: Vec<String>) -> Result<()> {
+    let plan = CommandPlan {
+        program: program.to_owned(),
+        args,
+    };
+    command_for(&plan)
+        .spawn()
+        .map(|_| ())
+        .map_err(|err| DroidLogError::spawn(program, err))
+}
+
 /// Transport used to reach a device shell.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
