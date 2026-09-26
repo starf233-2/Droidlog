@@ -94,6 +94,8 @@ export function App(): JSX.Element {
   const colorTheme = useAppStore((state) => state.colorTheme)
   const error = useAppStore((state) => state.error)
   const dismissError = useAppStore((state) => state.dismissError)
+  const notice = useAppStore((state) => state.notice)
+  const dismissNotice = useAppStore((state) => state.dismissNotice)
 
   useEffect(() => {
     if (bootstrapRequested) {
@@ -222,6 +224,23 @@ export function App(): JSX.Element {
           }
           onClose={dismissError}
           onDismiss={dismissError}
+        />
+      ) : notice !== null ? (
+        /*
+          Notices get a bar of their own. They used to render only inside the log
+          pane's empty state, so anything the app said while rows were on screen —
+          "已开始采集", "已导出 100,000 行 → C:\…" — was invisible. AUTO rather than
+          INDEFINITE: a confirmation must not need dismissing, but ten seconds is
+          long enough to read a path.
+        */
+        <Snackbar
+          className="dl-snackbar"
+          duration={SnackbarDuration.LONG}
+          open
+          multiLine
+          supportingText={notice}
+          onClose={dismissNotice}
+          onDismiss={dismissNotice}
         />
       ) : null}
     </div>

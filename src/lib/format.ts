@@ -110,3 +110,65 @@ export function formatOptionalNumber(value: number | null): string {
 export function formatMessage(message: string): string {
   return message.length === 0 ? '(空)' : message
 }
+
+/**
+ * Chinese labels for the system packages whose last name segment is not a word.
+ *
+ * The device cannot hand over an application's display name: `dumpsys package`
+ * only exposes `labelRes` (a resource id), and the text lives in the APK's
+ * `resources.arsc`. Until that is parsed on the host, the name shown for a
+ * running app is either this table (for the system apps everyone recognises) or a
+ * name derived from the package — and the package itself is always displayed
+ * underneath, so nothing is hidden by the guess.
+ */
+const SYSTEM_APP_NAMES: Record<string, string> = {
+  'com.android.settings': '设置',
+  'com.android.phone': '电话',
+  'com.android.dialer': '拨号',
+  'com.android.contacts': '联系人',
+  'com.android.mms': '信息',
+  'com.android.messaging': '信息',
+  'com.android.camera': '相机',
+  'com.android.camera2': '相机',
+  'com.android.gallery3d': '相册',
+  'com.android.documentsui': '文件',
+  'com.android.settings.intelligence': '设置建议',
+  'com.android.systemui': '系统界面',
+  'com.android.launcher': '桌面',
+  'com.android.launcher3': '桌面',
+  'com.android.bluetooth': '蓝牙',
+  'com.android.shell': 'Shell',
+  'com.android.providers.settings': '设置存储',
+  'com.android.vending': '应用商店',
+  'com.google.android.gms': 'Google 服务',
+  'com.google.android.gsf': 'Google 服务框架',
+  'com.android.chrome': 'Chrome',
+  'com.android.calendar': '日历',
+  'com.android.deskclock': '时钟',
+  'com.android.music': '音乐',
+  'com.android.email': '电子邮件',
+  'com.miui.home': '桌面',
+  'com.miui.securitycenter': '安全中心',
+  'com.miui.gallery': '相册',
+  'com.miui.calculator': '计算器',
+  'com.miui.weather2': '天气',
+}
+
+/**
+ * A readable name for a package.
+ *
+ * `com.android.settings` → `设置`, `tv.danmaku.bili` → `Bili`. Never a substitute
+ * for the real label: it is a display convenience, which is why the callers show
+ * the package next to it.
+ */
+export function appDisplayName(pkg: string): string {
+  const known = SYSTEM_APP_NAMES[pkg]
+  if (known !== undefined) {
+    return known
+  }
+  const segments = pkg.split('.').filter((segment) => segment.length > 0)
+  const last = segments.length > 0 ? (segments[segments.length - 1] ?? pkg) : pkg
+  // `bilibili` and `bili` should not read as `Bilibili`/`Bili` alike; keeping the
+  // segment as-is (only capitalising) at least matches the store listing.
+  return last.charAt(0).toUpperCase() + last.slice(1)
+}

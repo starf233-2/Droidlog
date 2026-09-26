@@ -22,6 +22,8 @@ import type {
   CollectionReport,
   DeviceInfo,
   ExecMode,
+  ExportFormat,
+  ExportOutcome,
   FilterRule,
   LogRecord,
   LogSourceKind,
@@ -170,6 +172,26 @@ export function getCollectReport(
   sessionId: string,
 ): Promise<CollectionReport | null> {
   return invoke<CollectionReport | null>('get_collect_report', { sessionId })
+}
+
+/**
+ * Writes already-formatted rows to a file under the user's downloads folder.
+ *
+ * The text is built by the caller, which holds the rows and knows what is on
+ * screen; the backend decides the destination, sanitises the name and adds the
+ * CSV byte-order mark.
+ */
+export function exportRecords(payload: {
+  content: string
+  format: ExportFormat
+  fileName: string
+}): Promise<ExportOutcome> {
+  return invoke<ExportOutcome>('export_records', payload)
+}
+
+/** Opens the file manager with an exported file selected. */
+export function revealExport(path: string): Promise<void> {
+  return invoke<void>('reveal_export', { path })
 }
 
 /** Lists all known sessions with their buffer counters. */

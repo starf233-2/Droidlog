@@ -395,6 +395,21 @@ export interface CollectRequest {
   intervalMs?: number
 }
 
+/* ------------------------------------------------------------------ export */
+
+/** File formats the export control offers. The extension is fixed by the backend. */
+export type ExportFormat = 'log' | 'csv' | 'json'
+
+/** What an export wrote, for the confirmation notice. */
+export interface ExportOutcome {
+  /** Absolute path of the written file. */
+  path: string
+  /** Bytes written, including the CSV byte-order mark. */
+  bytes: number
+  /** Format actually used. */
+  format: ExportFormat
+}
+
 /* ------------------------------------------------------------------ events */
 
 /** Payload of the `droidlog://records` event. */

@@ -61,6 +61,7 @@ export function Toolbar(): JSX.Element {
   const droppedCount = useAppStore((state) => state.droppedCount)
   const customCommand = useAppStore((state) => state.customCommand)
   const crashes = useAppStore((state) => state.crashes)
+  const exportRecords = useAppStore((state) => state.exportRecords)
   const theme = useAppStore((state) => state.theme)
   const setTheme = useAppStore((state) => state.setTheme)
   const colorTheme = useAppStore((state) => state.colorTheme)
@@ -72,6 +73,9 @@ export function Toolbar(): JSX.Element {
   // Root mode is only offered when the device can escalate.
   const rootPossible = selectedDevice?.rootAvailable !== false
   const hasCustomCommand = customCommand.trim().length > 0
+  // Export appears exactly when a collection has produced something and nothing
+  // is running: it takes the stop button's place rather than sitting next to it.
+  const canExport = running.length === 0 && recordCount > 0
 
   return (
     <MaterialToolbar
@@ -221,6 +225,22 @@ export function Toolbar(): JSX.Element {
         {running.length > 0 ? (
           <OutlinedButton onClick={() => void stopAllSessions()}>
             全部停止
+          </OutlinedButton>
+        ) : canExport ? (
+          /*
+            Export takes the stop button's slot, and is the *same control*:
+            an `OutlinedButton` of identical size. A format chooser was tried here
+            first (an `md-outlined-select`), and it does not belong in a 56px bar:
+            the component's own field is 86px tall, and pinning it to the button's
+            32px clips its label. The log format is what "导出" means; CSV and JSON
+            serialisers are in `lib/export.ts` and are wired up when they get a
+            control with room for a menu.
+          */
+          <OutlinedButton
+            onClick={() => void exportRecords('log')}
+            title="导出当前缓冲区为 droidlog-<时间戳>.log（下载目录）"
+          >
+            导出
           </OutlinedButton>
         ) : null}
 

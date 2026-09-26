@@ -20,6 +20,8 @@
 import { create } from 'zustand'
 
 import * as api from '../api/backend'
+import { formatCount } from '../lib/format'
+import { exportFileName, serialize } from '../lib/export'
 import { COLOR_THEMES, applyColorScheme } from '../theme'
 import type { ColorThemeId } from '../theme'
 import type {
@@ -33,6 +35,7 @@ import type {
   DeviceInfo,
   DevicesEvent,
   ExecMode,
+  ExportFormat,
   FilterRule,
   LogLevel,
   LogRecord,
@@ -228,6 +231,58 @@ function initialColorTheme(): ColorThemeId {
 const pendingRows: LogRow[] = []
 let frameScheduled = false
 
+/** Handle of the app-launch watcher, and whether it is armed for a first start. */
+let watchTimer: number | null = null
+let watchArmed = true
+
+/** How often the watcher asks the device whether the app is up. */
+const WATCH_INTERVAL_MS = 1000
+
+/**
+ * Polls for `input` appearing, and starts a capture when it does.
+ *
+ * Re-arms only after the app has gone away again, so one launch starts one
+ * capture rather than one per poll.
+ */
+function startWatch(get: () => AppStore, set: (partial: Partial<AppStore>) => void): void {
+  stopWatch()
+  watchArmed = true
+  watchTimer = window.setInterval(() => {
+    const { selectedSerial, mode, appTargetInput, watching } = get()
+    if (!watching || selectedSerial === null || appTargetInput.trim().length === 0) {
+      return
+    }
+    void api
+      .setAppTarget(selectedSerial, mode, appTargetInput)
+      .then((resolved) => {
+        get().applyAppTarget(resolved)
+        const up = resolved !== null && resolved.found && resolved.pids.length > 0
+        if (!up) {
+          // Gone again: the next start is worth catching.
+          watchArmed = true
+          return
+        }
+        if (!watchArmed) {
+          return
+        }
+        watchArmed = false
+        set({ notice: `检测到 ${resolved.package ?? resolved.input} 已启动，正在开始采集…` })
+        void get().startCapture()
+      })
+      .catch(() => {
+        // A transient adb failure is not a reason to stop watching.
+      })
+  }, WATCH_INTERVAL_MS)
+}
+
+/** Stops and forgets the watcher. */
+function stopWatch(): void {
+  if (watchTimer !== null) {
+    window.clearInterval(watchTimer)
+    watchTimer = null
+  }
+}
+
 function flushPendingRows(): void {
   frameScheduled = false
   if (pendingRows.length === 0) {
@@ -325,6 +380,18 @@ interface AppStore {
   /** Moves to the next crash after the given row, wrapping around. */
   jumpToNextCrash: (from: number) => void
 
+  /**
+   * Whether the app-launch watcher is running.
+   *
+   * Some applications crash while they are still drawing their first frame, and a
+   * capture started by hand arrives after the interesting part. Watching resolves
+   * the target once a second and starts a capture the moment it appears — the
+   * crash buffer keeps the event anyway, so the capture finds it even if the
+   * process is already gone.
+   */
+  watching: boolean
+  setWatching: (on: boolean) => Promise<void>
+
   /** Collection reports, keyed by session id; they outlive their session. */
   reports: CollectionReport[]
   applyCollectReport: (report: CollectionReport) => void
@@ -340,6 +407,15 @@ interface AppStore {
    * own.
    */
   collect: (source: 'crash' | 'boot' | 'recovery') => Promise<void>
+
+  /**
+   * Writes the collected buffer to a file in the user's downloads folder.
+   *
+   * Refused while a session is running: the file would be a snapshot of a buffer
+   * that is still growing, and "export" should mean "this is what I collected",
+   * not "this is what had arrived when I clicked".
+   */
+  exportRecords: (format: ExportFormat) => Promise<void>
 
   /* ------------------------------------------------------------ filters */
   filters: FilterRule[]
@@ -820,6 +896,86 @@ export const useAppStore = create<AppStore>((set, get) => ({
         error: null,
         notice: `已开始采集：${started.command}`,
       })
+    } catch (error) {
+      const backendError = messagesOf(error)
+      set({
+        error: backendError.environmental ? null : backendError,
+        notice: backendError.environmental ? backendError.message : null,
+      })
+    }
+  },
+
+  watching: false,
+  setWatching: async (on) => {
+    const { selectedSerial, appTargetInput } = get()
+    const wanted = appTargetInput.trim()
+    if (!on) {
+      stopWatch()
+      set({ watching: false, notice: '已停止监听应用启动' })
+      return
+    }
+    if (selectedSerial === null || wanted.length === 0) {
+      set({ notice: '请先选择设备并填写要监听的应用（包名 / 应用名 / UID）' })
+      return
+    }
+
+    // Resolve once up front: it validates the input now, and puts the chip in the
+    // right state before the first poll.
+    try {
+      // `setAppTarget`, not `resolveApp`: this is the call that also stores the
+      // target in the backend, and the backend is what narrows the capture on the
+      // device (`logcat --uid=`). Resolving alone left the capture with no filter
+      // at all — all system logs — or with a stale uid from the previous target,
+      // which produced an empty table.
+      const resolved = await api.setAppTarget(selectedSerial, get().mode, wanted)
+      get().applyAppTarget(resolved)
+      const alreadyUp = resolved !== null && resolved.found && resolved.pids.length > 0
+      set({
+        watching: true,
+        error: null,
+        notice: alreadyUp
+          ? `${resolved?.package ?? wanted} 已在运行：监听中，重新启动会再次自动采集`
+          : `监听中：${wanted} 一旦启动，立即开始采集`,
+      })
+      startWatch(get, set)
+    } catch (error) {
+      const backendError = messagesOf(error)
+      set({
+        watching: false,
+        error: backendError.environmental ? null : backendError,
+        notice: backendError.environmental ? backendError.message : null,
+      })
+    }
+  },
+
+  exportRecords: async (format) => {
+    const { records, sessions } = get()
+    if (sessions.some((session) => session.status.state === 'running')) {
+      set({ notice: '采集完成后才能导出' })
+      return
+    }
+    if (records.length === 0) {
+      set({ notice: '还没有可导出的日志' })
+      return
+    }
+
+    try {
+      const outcome = await api.exportRecords({
+        content: serialize(records, format),
+        format,
+        fileName: exportFileName(format),
+      })
+      set({
+        error: null,
+        notice: `已导出 ${formatCount(records.length)} 行 → ${outcome.path}`,
+      })
+      // The notice is not selectable text, so open the folder as well — otherwise
+      // the only way to find the file would be to read a path off the screen.
+      try {
+        await api.revealExport(outcome.path)
+      } catch {
+        // Revealing is a convenience; the export itself already succeeded.
+      }
     } catch (error) {
       const backendError = messagesOf(error)
       set({

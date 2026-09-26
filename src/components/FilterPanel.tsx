@@ -41,7 +41,7 @@ import type { MdSwitch } from '@material/web/switch/switch.js'
 
 import { useAppStore } from '../store/useAppStore'
 import { reserveMenuScrollbar } from '../lib/shadow-fixes'
-import { LOG_LEVELS, levelLabel } from '../lib/format'
+import { LOG_LEVELS, appDisplayName, levelLabel } from '../lib/format'
 import type { FilterField, FilterOp, FilterRule, LogLevel } from '../types'
 
 const FIELDS: readonly { value: FilterField; label: string }[] = [
@@ -104,25 +104,10 @@ function TargetSection(): JSX.Element {
   const runningApps = useAppStore((state) => state.runningApps)
   const refreshRunning = useAppStore((state) => state.refreshRunningApps)
   const selectedSerial = useAppStore((state) => state.selectedSerial)
+  const watching = useAppStore((state) => state.watching)
+  const setWatching = useAppStore((state) => state.setWatching)
 
   const submit = (): void => void resolve()
-
-  /*
-   * The picker mirrors the *current target* rather than being a one-shot command.
-   *
-   * It used to clear itself the moment something was chosen, which left the panel
-   * with no control showing what was actually being captured — you had to read the
-   * chip to know, and after `清除目标` the dropdown still displayed the old choice
-   * while nothing was being followed. Now the selection is derived state: it shows
-   * the target's package whenever a target is set, whoever set it (typed, resolved,
-   * picked here, or restored by the 30s re-resolver), and it is empty when there is
-   * no target.
-   *
-   * A target that is not a running app — a bare PID, a UID, or a package that has
-   * since stopped — simply matches no option, so the field reads as a placeholder
-   * while the chip below still states the full identity.
-   */
-  const selectedPackage = target?.package ?? ''
 
   return (
     <section className="dl-panel__section">
@@ -153,36 +138,38 @@ function TargetSection(): JSX.Element {
       </div>
 
       {runningApps.length > 0 ? (
-        <OutlinedSelect
-          menuPositioning="fixed"
-          onOpening={(event: Event) => reserveMenuScrollbar(event.target as Element)}
-          label="从运行中选择"
-          value={selectedPackage}
-          disabled={selectedSerial === null}
-          onChange={(event: Event) => {
-            const choice = (event.target as MdOutlinedSelect).value
-            if (choice !== '') {
-              setInput(choice)
-              void resolve()
-            }
-          }}
-        >
-          {runningApps.map((app) => (
-            <SelectOption
-              key={app.package}
-              value={app.package}
-              // Driving `selected` directly, not only the select's `value`: the
-              // element's value setter looks for a matching option, so clearing
-              // the value alone can leave the previous option rendered as chosen.
-              selected={app.package === selectedPackage}
-            >
-              <div slot="headline">
-                {app.package}
-                {app.uid === null ? '' : `（UID ${app.uid}）`}
-              </div>
-            </SelectOption>
+        /*
+          A list rather than a select: every entry has to carry three things — the
+          name (top), the package (below, grey, monospace) and pid/uid (on hover,
+          where there is no room to print them without truncating the name).
+        */
+        <ul className="dl-apps" aria-label="运行中的应用">
+          {runningApps
+            // The list comes from `ps`, so it also contains process names that are
+            // not packages (`.dataservices`, `kworker`). Those have no label and no
+            // meaning in the target field, and showing them as "Dataservices" reads
+            // like an application name.
+            .filter((app) => /^[A-Za-z][\w]*(\.[\w]+)+$/.test(app.package))
+            .map((app) => (
+            <li key={app.package}>
+              <button
+                type="button"
+                className="dl-apps__item"
+                onClick={() => {
+                  setInput(app.package)
+                  void resolve()
+                }}
+                title={
+                  `PID ${app.pids.length > 0 ? app.pids.join(', ') : '—'}` +
+                  ` · UID ${app.uid ?? '—'}\n${app.package}`
+                }
+              >
+                <span className="dl-apps__name">{appDisplayName(app.package)}</span>
+                <span className="dl-apps__package dl-mono">{app.package}</span>
+              </button>
+            </li>
           ))}
-        </OutlinedSelect>
+        </ul>
       ) : null}
 
       <TextButton
@@ -192,6 +179,25 @@ function TargetSection(): JSX.Element {
       >
         刷新运行列表
       </TextButton>
+
+      {/*
+        Launch watcher: the answer to "it crashes before I can start a capture".
+      */}
+      <TextButton
+        className={`dl-panel__action${watching ? ' dl-panel__action--on' : ''}`}
+        onClick={() => void setWatching(!watching)}
+        disabled={selectedSerial === null || input.trim().length === 0}
+        title="每秒检查一次；应用一旦启动就立刻开始采集"
+      >
+        {watching ? '停止监听' : '监听启动'}
+      </TextButton>
+
+      {watching ? (
+        <p className="dl-panel__hint">
+          监听中：<span className="dl-mono">{input.trim()}</span>{' '}
+          启动后立即自动采集（每秒检查一次；应用消失后会重新武装）。
+        </p>
+      ) : null}
 
       {target === null ? (
         <p className="dl-panel__hint">

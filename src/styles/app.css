@@ -734,6 +734,85 @@
   flex: 1;
 }
 
+/* The input rendered 26px tall with its text sitting off-centre: the field's
+   internal label/placeholder geometry is laid out for the component's own
+   container height, and squeezing top/bottom space to 5px left the text closer to
+   one border than the other. Giving the control the same 32px as every other
+   control here — with the space split 8/8 around the 16px line box — centres it. */
+.dl-target__input {
+  height: 32px;
+  --md-outlined-text-field-top-space: 8px;
+  --md-outlined-text-field-bottom-space: 8px;
+  --md-outlined-text-field-input-text-line-height: 16px;
+}
+
+.dl-target__input::part(field) {
+  height: 32px;
+  min-height: 32px;
+}
+
+/* ---- running applications ------------------------------------------------ */
+
+/*
+ * Name on top, package underneath in grey monospace, pid/uid on hover (a `title`
+ * on the row). Capped height with its own scroll so a device with dozens of
+ * running apps cannot push the rest of the panel out of view.
+ */
+.dl-apps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 176px;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+.dl-apps__item {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  width: 100%;
+  padding: var(--dl-space-1) var(--dl-space-2);
+  text-align: left;
+  border: 1px solid transparent;
+  border-radius: var(--dl-radius-control);
+  background-color: var(--dl-surface-container);
+  color: var(--dl-on-surface);
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+.dl-apps__item:hover {
+  background-color: var(--dl-surface-container-high);
+  border-color: var(--dl-outline-variant);
+}
+
+.dl-apps__name {
+  font: var(--dl-type-body-medium);
+  /* One line, ellipsised: a long name must not widen the row. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dl-apps__package {
+  font-size: 11px;
+  line-height: 14px;
+  color: var(--dl-on-surface-variant);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* An active action, not a selected option: filled, like the toolbar's toggles. */
+.dl-panel__action--on {
+  background-color: var(--dl-secondary-container);
+  color: var(--dl-on-secondary-container);
+  border-radius: var(--dl-radius-control);
+}
+
 
 
 
