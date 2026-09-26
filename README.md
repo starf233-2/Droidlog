@@ -297,7 +297,6 @@ cargo tauri build              # 打包安装包
 ## 已知限制
 
 - **仅 Windows**：内置的 `platform-tools` 是 Windows 版。Tauri 本身跨平台，但本项目未在 macOS / Linux 上验证。
-- 暂**不支持导出**（文本 / CSV / JSON）。
 - 未做 `bugreport` 一体化采集与 `adb pull` 落盘（读文件用 `cat`，等价但不在主机留副本）。
 - 老设备（Android 4.x 或非标准 shell）只做了防御性处理，未逐一验证。
 
