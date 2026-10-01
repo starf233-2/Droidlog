@@ -407,5 +407,3 @@ java -cp r8.jar com.android.tools.r8.D8 --min-api 24 --no-desugaring --output ou
 - `platform-tools*/`（`adb`、`adb.exe`、`AdbWinApi.dll` 等）来自 Google Android SDK Platform-Tools，按其随附 `NOTICE.txt` 分发。
 - 界面组件：[`material-expressive-react`](https://www.npmjs.com/package/material-expressive-react) 与 [`@material/web`](https://github.com/material-components/material-web)（Apache-2.0）。
 - 字体：[Roboto](https://fonts.google.com/specimen/Roboto) 与 [Noto Sans SC](https://fonts.google.com/noto/specimen/Noto+Sans+SC)（SIL Open Font License 1.1）。
-
-架构设计、协议细节与踩坑记录见 **[docs/DESIGN.md](docs/DESIGN.md)**。
