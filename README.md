@@ -2,7 +2,6 @@
 
 **Android 日志采集与分析桌面应用** —— 一根数据线，把 logcat、内核日志、崩溃现场、启动日志、Recovery 日志收进同一个可过滤、可标记、可追溯、可导出的窗口。
 
-![Droidlog 主界面](docs/images/droidlog-main.png)
 
 > **Tauri 2 + Rust + React + TypeScript**（不使用 Electron）。安装包**内置 adb**，装完即用，不需要先配 Android SDK。
 > 支持 **Windows / macOS / Linux**，三个平台各一条打包命令（见[快速开始](#快速开始)）。
