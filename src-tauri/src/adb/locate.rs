@@ -202,6 +202,38 @@ pub fn candidate_paths() -> Vec<PathBuf> {
 /// no usable binary exists. This is an *environmental* error, so the UI shows an
 /// empty-state hint rather than a failure banner.
 pub fn discover() -> Result<(PathBuf, AdbSource)> {
+    let (path, source) = discover_inner()?;
+    ensure_executable(&path);
+    Ok((path, source))
+}
+
+/// Best-effort `chmod +x` for a located binary.
+///
+/// The bundled `adb` lives in the repository, and a file that has travelled
+/// through a Windows checkout, a zip archive, or Tauri's resource copy can arrive
+/// without its executable bit. On Unix that turns the first spawn into `EACCES`,
+/// which reads as "adb is broken" rather than "this file needs a permission bit" —
+/// so the bit is repaired here, once, where the path is finally known.
+#[cfg(unix)]
+fn ensure_executable(path: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+
+    let Ok(meta) = std::fs::metadata(path) else {
+        return;
+    };
+    let mode = meta.permissions().mode();
+    if mode & 0o111 == 0o111 {
+        return;
+    }
+    let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode | 0o755));
+}
+
+/// Windows has no equivalent: an `.exe` is executable by virtue of its extension.
+#[cfg(not(unix))]
+fn ensure_executable(_path: &Path) {}
+
+/// The search itself, in priority order.
+fn discover_inner() -> Result<(PathBuf, AdbSource)> {
     if let Some(override_path) = std::env::var_os(ADB_OVERRIDE_ENV) {
         if !override_path.is_empty() {
             let path = PathBuf::from(&override_path);

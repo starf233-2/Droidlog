@@ -1,6 +1,6 @@
 [package]
 name = "droidlog"
-version = "0.1.0"
+version = "0.1.2"
 description = "Android log collection desktop app (ADB / Root)"
 authors = ["droidlog"]
 edition = "2021"

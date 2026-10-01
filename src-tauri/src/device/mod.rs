@@ -4,6 +4,7 @@
 //! deliberately permissive: unknown `key:value` pairs and future device states
 //! are preserved rather than rejected.
 
+pub mod installed;
 pub mod probe;
 pub mod resolve;
 pub mod watch;

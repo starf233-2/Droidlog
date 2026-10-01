@@ -1,0 +1,10 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "bundle": {
+    "targets": ["deb", "appimage"],
+    "resources": {
+      "platform-tools-linux/adb": "platform-tools/adb",
+      "platform-tools-linux/NOTICE.txt": "platform-tools/NOTICE.txt"
+    }
+  }
+}

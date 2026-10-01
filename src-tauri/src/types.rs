@@ -11,6 +11,7 @@ pub use crate::collect::probe::{ProbeOutcome, ProbeStatus};
 pub use crate::collect::{CollectRequest, CollectionReport, CrashEntry, CrashEvent};
 pub use crate::commands::{AdbProbe, AppInfo};
 pub use crate::crash::CrashKind;
+pub use crate::device::installed::InstalledApp;
 pub use crate::device::{DeviceInfo, DeviceProbe, DeviceState};
 pub use crate::error::DroidLogError;
 pub use crate::executor::{ExecMode, ExecOutput};

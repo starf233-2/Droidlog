@@ -418,3 +418,59 @@ pub fn reveal_export(app: AppHandle, path: String) -> Result<()> {
     let dir = export::export_dir(app.path().download_dir().ok());
     export::reveal(&dir, std::path::Path::new(&path))
 }
+
+/// Lists installed applications with the names the **device** resolves.
+///
+/// An app's display name is reachable from no adb command, so a 4 KB dex embedded
+/// in this binary is staged on the phone and run through `app_process`, asking
+/// `PackageManager.getApplicationLabel()` for every package — 438 apps in 1.9 s on
+/// the phone this was built against. Version, target SDK, install time and enabled
+/// state come from a single `dumpsys package packages` dump.
+///
+/// The full list (system apps included) is cached on disk for
+/// [`crate::device::installed::CACHE_TTL`], so toggling "show system apps" costs
+/// nothing while the cache is fresh; filtering happens after the read.
+///
+/// # Errors
+///
+/// Returns [`crate::error::DroidLogError`] when adb cannot be located or the device
+/// cannot be read.
+#[tauri::command]
+pub async fn list_installed_apps(
+    app: AppHandle,
+    serial: String,
+    mode: ExecMode,
+    include_system: bool,
+) -> Result<Vec<crate::device::installed::InstalledApp>> {
+    let adb = Adb::discover()?;
+    let cache = app
+        .path()
+        .app_cache_dir()
+        .ok()
+        .map(|dir| crate::device::installed::cache_path(&dir, &serial));
+
+    let all = match cache
+        .as_ref()
+        .and_then(|path| crate::device::installed::read_cache(path))
+    {
+        Some(cached) => cached,
+        None => {
+            let fetched = crate::device::installed::list(&adb, mode, &serial, true).await?;
+            // Never cache a label-less list. That is what a failed probe yields, and
+            // caching it would keep every application name wrong for the whole TTL
+            // even after the device recovers — which is precisely the "real names for
+            // a second, package names afterwards" report this guard exists for.
+            if let Some(path) = cache.as_ref() {
+                if fetched.iter().any(|entry| !entry.label.is_empty()) {
+                    crate::device::installed::write_cache(path, &fetched);
+                }
+            }
+            fetched
+        }
+    };
+
+    Ok(all
+        .into_iter()
+        .filter(|entry| include_system || !entry.system)
+        .collect())
+}

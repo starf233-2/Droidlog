@@ -116,6 +116,7 @@ pub fn run() {
             commands::set_app_target,
             commands::get_app_target,
             commands::list_running_apps,
+            commands::list_installed_apps,
         commands::collect_crash,
         commands::collect_boot,
         commands::collect_recovery,
