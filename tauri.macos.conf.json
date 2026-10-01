@@ -1,0 +1,13 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "bundle": {
+    "targets": ["app", "dmg"],
+    "resources": {
+      "platform-tools-mac/adb": "platform-tools/adb",
+      "platform-tools-mac/NOTICE.txt": "platform-tools/NOTICE.txt"
+    },
+    "macOS": {
+      "minimumSystemVersion": "10.15"
+    }
+  }
+}
