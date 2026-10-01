@@ -122,9 +122,32 @@ pub fn known_locations() -> Vec<PathBuf> {
             );
         }
     } else {
+        // PATH and an SDK environment variable are searched first; these are the
+        // places an SDK ends up when it was installed with a default setting.
         out.push(PathBuf::from("/usr/local/bin"));
         out.push(PathBuf::from("/usr/bin"));
         out.push(PathBuf::from("/opt/homebrew/bin"));
+        if let Some(home) = std::env::var_os("HOME") {
+            let home = Path::new(&home);
+            if cfg!(target_os = "macos") {
+                out.push(
+                    home.join("Library")
+                        .join("Android")
+                        .join("sdk")
+                        .join("platform-tools"),
+                );
+            } else {
+                out.push(home.join("Android").join("Sdk").join("platform-tools"));
+                out.push(
+                    home.join("Android")
+                        .join("sdk")
+                        .join("platform-tools"),
+                );
+            }
+        }
+        // Distribution packages (Debian, Arch, Alpine) install adb here.
+        out.push(PathBuf::from("/usr/lib/android-sdk/platform-tools"));
+        out.push(PathBuf::from("/opt/android-sdk/platform-tools"));
     }
 
     out
