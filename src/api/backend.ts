@@ -25,6 +25,7 @@ import type {
   ExportFormat,
   ExportOutcome,
   FilterRule,
+  InstalledApp,
   LogRecord,
   LogSourceKind,
   RunningApp,
@@ -251,4 +252,26 @@ export function listRunningApps(
   mode: ExecMode,
 ): Promise<RunningApp[]> {
   return invoke<RunningApp[]>('list_running_apps', { serial, mode })
+}
+
+/**
+ * Lists the applications installed on the device.
+ *
+ * Slow on the first call per device — the backend pushes a small helper probe to
+ * the phone and parses a full package dump — and served from a host-side cache
+ * afterwards, which is why the caller decides when to ask rather than polling.
+ *
+ * @param includeSystem also return system (pre-installed) packages. The device
+ *                      does the filtering, so flipping this needs a fresh call.
+ */
+export function listInstalledApps(
+  serial: string,
+  mode: ExecMode,
+  includeSystem: boolean,
+): Promise<InstalledApp[]> {
+  return invoke<InstalledApp[]>('list_installed_apps', {
+    serial,
+    mode,
+    includeSystem,
+  })
 }

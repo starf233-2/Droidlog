@@ -37,6 +37,7 @@ import type {
   ExecMode,
   ExportFormat,
   FilterRule,
+  InstalledApp,
   LogLevel,
   LogRecord,
   LogRow,
@@ -443,6 +444,31 @@ interface AppStore {
   runningApps: RunningApp[]
   refreshRunningApps: () => Promise<void>
 
+  /* ------------------------------------------------------- installed apps */
+  /** Applications installed on the selected device, for the picker. */
+  installedApps: InstalledApp[]
+  installedAppsLoading: boolean
+  installedAppsError: BackendError | null
+  /** Whether system (pre-installed) packages are listed as well. */
+  showSystemApps: boolean
+  /** Flips the system filter and re-reads the list, which needs a device call. */
+  setShowSystemApps: (value: boolean) => void
+  /** Case-insensitive substring matched against app name and package. */
+  installedAppsQuery: string
+  setInstalledAppsQuery: (value: string) => void
+  /** Whether the picker's list is expanded. */
+  installedAppsOpen: boolean
+  setInstalledAppsOpen: (open: boolean) => void
+  /**
+   * Reads the installed applications for the selected device and mode.
+   *
+   * Expensive on the first call per device (a helper probe is pushed to it and a
+   * full package dump is parsed) and host-cached afterwards, so it runs on the
+   * picker's own two triggers — opening it, and flipping the system filter — and
+   * never on a timer.
+   */
+  loadInstalledApps: () => Promise<void>
+
   /* -------------------------------------------------------------- status */
   error: BackendError | null
   notice: string | null
@@ -567,6 +593,14 @@ export const useAppStore = create<AppStore>((set, get) => ({
   appTarget: null,
   appTargetInput: '',
   runningApps: [],
+
+  /* ------------------------------------------------------- installed apps */
+  installedApps: [],
+  installedAppsLoading: false,
+  installedAppsError: null,
+  showSystemApps: false,
+  installedAppsQuery: '',
+  installedAppsOpen: false,
 
   /* -------------------------------------------------------------- status */
   error: null,
@@ -1113,6 +1147,56 @@ export const useAppStore = create<AppStore>((set, get) => ({
     } catch {
       // The picker is a convenience; a failure must not blank the panel.
       set({ runningApps: [] })
+    }
+  },
+
+  setInstalledAppsQuery: (value) => set({ installedAppsQuery: value }),
+
+  setInstalledAppsOpen: (open) => set({ installedAppsOpen: open }),
+
+  /**
+   * Flips the system-app filter and re-reads the list.
+   *
+   * The *device* does the filtering (`pm list packages -s` is a different dump),
+   * so the list in hand cannot be narrowed into the new answer — it has to be
+   * asked for again.
+   */
+  setShowSystemApps: (value) => {
+    set({ showSystemApps: value })
+    void get().loadInstalledApps()
+  },
+
+  loadInstalledApps: async () => {
+    const { selectedSerial, mode } = get()
+    if (selectedSerial === null) {
+      set({ notice: '请先选择一个设备' })
+      return
+    }
+
+    set({ installedAppsLoading: true })
+    try {
+      // Always the full list, system apps included, and filter locally on
+      // `showSystemApps`.
+      //
+      // Two reasons. The picker must flip between the two sets instantly, and the
+      // *running* list resolves its names from this same cache — a running process
+      // is very often a system package (com.android.bluetooth → 蓝牙), so a
+      // user-only list left those rows showing names derived from the package.
+      const installedApps = await api.listInstalledApps(selectedSerial, mode, true)
+      set({
+        installedApps,
+        installedAppsLoading: false,
+        installedAppsError: null,
+      })
+    } catch (error) {
+      const backendError = messagesOf(error)
+      set({
+        installedAppsLoading: false,
+        // Same split as the device list: a device that cannot be read is an empty
+        // state, not a failure banner, so the reason goes to the notice instead.
+        installedAppsError: backendError.environmental ? null : backendError,
+        notice: backendError.environmental ? backendError.message : null,
+      })
     }
   },
 

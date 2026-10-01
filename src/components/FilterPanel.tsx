@@ -23,7 +23,7 @@
  */
 
 import type { JSX } from 'react'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   FilterChip,
   OutlinedButton,
@@ -42,7 +42,7 @@ import type { MdSwitch } from '@material/web/switch/switch.js'
 import { useAppStore } from '../store/useAppStore'
 import { reserveMenuScrollbar } from '../lib/shadow-fixes'
 import { LOG_LEVELS, appDisplayName, levelLabel } from '../lib/format'
-import type { FilterField, FilterOp, FilterRule, LogLevel } from '../types'
+import type { FilterField, FilterOp, FilterRule, InstalledApp, LogLevel } from '../types'
 
 const FIELDS: readonly { value: FilterField; label: string }[] = [
   { value: 'tag', label: 'TAG' },
@@ -96,6 +96,16 @@ function nextRuleId(): string {
 /* -------------------------------------------------------------------------- */
 
 function TargetSection(): JSX.Element {
+  /*
+    Whether the running-apps list is expanded.
+
+    Local to this card rather than a store field: only this card renders the list,
+    and it is the one part of the card that grows without bound (one row per process
+    on the device), so folding it away has to be possible. Defaults to expanded —
+    the behaviour before there was a control for it.
+  */
+  const [runningAppsOpen, setRunningAppsOpen] = useState(true)
+
   const input = useAppStore((state) => state.appTargetInput)
   const setInput = useAppStore((state) => state.setAppTargetInput)
   const target = useAppStore((state) => state.appTarget)
@@ -106,8 +116,66 @@ function TargetSection(): JSX.Element {
   const selectedSerial = useAppStore((state) => state.selectedSerial)
   const watching = useAppStore((state) => state.watching)
   const setWatching = useAppStore((state) => state.setWatching)
+  const installedApps = useAppStore((state) => state.installedApps)
+  const installedAppsLoading = useAppStore((state) => state.installedAppsLoading)
+  const installedAppsError = useAppStore((state) => state.installedAppsError)
+  const installedAppsOpen = useAppStore((state) => state.installedAppsOpen)
+  const setInstalledAppsOpen = useAppStore((state) => state.setInstalledAppsOpen)
+  const installedAppsQuery = useAppStore((state) => state.installedAppsQuery)
+  const setInstalledAppsQuery = useAppStore(
+    (state) => state.setInstalledAppsQuery,
+  )
+  const showSystemApps = useAppStore((state) => state.showSystemApps)
+  const setShowSystemApps = useAppStore((state) => state.setShowSystemApps)
+  const loadInstalledApps = useAppStore((state) => state.loadInstalledApps)
+
+  /*
+    Device-resolved names for the *running* list, keyed by package.
+
+    The installed-app dump is the only place a real display name exists, and it is
+    read only when the picker has been used — hence the package-derived fallback.
+    A map rather than a lookup per row: the running list is re-rendered whenever a
+    record arrives, and scanning the whole installed list each time would be O(rows
+    × installed).
+  */
+  const installedLabels = useMemo(() => {
+    const labels = new Map<string, string>()
+    for (const app of installedApps) {
+      if (app.label.length > 0) {
+        labels.set(app.package, app.label)
+      }
+    }
+    return labels
+  }, [installedApps])
+
+  // The system filter is applied here too, not only on the device: the rows from
+  // the previous read stay on screen while a fresh one is in flight, and they must
+  // not contradict the toggle the user just flipped.
+  const query = installedAppsQuery.trim().toLowerCase()
+  const visibleInstalledApps = installedApps.filter((app) => {
+    if (!showSystemApps && app.system) {
+      return false
+    }
+    if (query.length === 0) {
+      return true
+    }
+    return (
+      app.label.toLowerCase().includes(query) ||
+      app.package.toLowerCase().includes(query)
+    )
+  })
 
   const submit = (): void => void resolve()
+
+  const toggleInstalledApps = (): void => {
+    const open = !installedAppsOpen
+    setInstalledAppsOpen(open)
+    if (open) {
+      // Re-read on every open: the list belongs to one device, and the backend
+      // answers from its host-side cache unless the device changed.
+      void loadInstalledApps()
+    }
+  }
 
   return (
     <section className="dl-panel__section">
@@ -137,7 +205,115 @@ function TargetSection(): JSX.Element {
         </TextButton>
       </div>
 
+      {/*
+        The second way to fill the box above: pick from what is installed. Left
+        enabled with no device on purpose — the store answers with 请先选择一个设备,
+        which explains more than a greyed-out button with no reason.
+      */}
+      <TextButton className="dl-panel__action" onClick={toggleInstalledApps}>
+        {installedAppsOpen ? '收起应用列表' : '从已安装应用中选择'}
+      </TextButton>
+
+      {installedAppsOpen ? (
+        <>
+          {/*
+            The 32px control height this panel uses for a single-line field (see
+            `.dl-target__input`). The existing row class is what makes that field's
+            `flex: 1` mean "full width": as a direct child of the section's *column*
+            flex it would mean "grow in height" instead.
+          */}
+          <div className="dl-target__row">
+            <Textfield
+              className="dl-target__input"
+              variant="outlined"
+              label="搜索应用名 / 包名"
+              value={installedAppsQuery}
+              onChange={(event: Event) =>
+                setInstalledAppsQuery((event.target as MdOutlinedTextField).value)
+              }
+            />
+          </div>
+
+          {/* The device filters system packages, so flipping this re-reads the list. */}
+          <OutlinedSegmentedButtonSet
+            className="dl-segmented"
+            selectType="single"
+            size="xsmall"
+            selectedIcon="✓"
+            value={showSystemApps ? 'system' : 'user'}
+            onChange={(value) => {
+              const next = Array.isArray(value) ? value[0] : value
+              if (next === undefined) {
+                return
+              }
+              setShowSystemApps(next === 'system')
+            }}
+            aria-label="是否包含系统应用"
+          >
+            <OutlinedSegmentedButton value="user" label="仅用户" />
+            <OutlinedSegmentedButton value="system" label="含系统" />
+          </OutlinedSegmentedButtonSet>
+
+          {installedAppsLoading ? (
+            <p className="dl-panel__hint">正在读取已安装应用…</p>
+          ) : null}
+
+          {installedAppsError !== null ? (
+            <p className="dl-panel__hint">{installedAppsError.message}</p>
+          ) : null}
+
+          <h4 className="dl-panel__label">已安装应用</h4>
+          {visibleInstalledApps.length > 0 ? (
+            <ul className="dl-apps" aria-label="已安装应用">              {visibleInstalledApps.map((app) => (
+                <li key={app.package}>
+                  <button
+                    type="button"
+                    className="dl-apps__item"
+                    onClick={() => {
+                      setInput(app.package)
+                      void resolve()
+                    }}
+                    title={installedAppTitle(app)}
+                  >
+                    {/*
+                      The device's own name wins. `appDisplayName` is the same
+                      last-resort guess the running list used before, and the package
+                      is always printed underneath, so nothing is hidden by it.
+                    */}
+                    <span className="dl-apps__name">
+                      {app.label.length > 0
+                        ? app.label
+                        : appDisplayName(app.package)}
+                    </span>
+                    <span className="dl-apps__package dl-mono">{app.package}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : installedAppsLoading ? null : (
+            <p className="dl-panel__hint">
+              {installedApps.length === 0
+                ? '尚未读取到已安装应用。'
+                : '没有匹配的应用。'}
+            </p>
+          )}
+        </>
+      ) : null}
+
       {runningApps.length > 0 ? (
+        <TextButton
+          className="dl-panel__action"
+          onClick={() => setRunningAppsOpen((open) => !open)}
+        >
+          {runningAppsOpen ? '收起运行列表' : '展开运行列表'}
+        </TextButton>
+      ) : null}
+
+      {runningApps.length > 0 && runningAppsOpen ? (
+        <h4 className="dl-panel__label">运行中的应用</h4>
+      ) : null}
+
+      {runningApps.length > 0 && runningAppsOpen ? (
         /*
           A list rather than a select: every entry has to carry three things — the
           name (top), the package (below, grey, monospace) and pid/uid (on hover,
@@ -164,7 +340,9 @@ function TargetSection(): JSX.Element {
                   ` · UID ${app.uid ?? '—'}\n${app.package}`
                 }
               >
-                <span className="dl-apps__name">{appDisplayName(app.package)}</span>
+                <span className="dl-apps__name">
+                  {installedLabels.get(app.package) ?? appDisplayName(app.package)}
+                </span>
                 <span className="dl-apps__package dl-mono">{app.package}</span>
               </button>
             </li>
@@ -228,6 +406,41 @@ function TargetSection(): JSX.Element {
       ) : null}
     </section>
   )
+}
+
+/**
+ * The hover tooltip of an installed-app row.
+ *
+ * Follows the running list's shape — the facts on the first line, the package on
+ * its own line below, where there is no room to print it without truncating the
+ * name — and omits every part the device did not report.
+ */
+function installedAppTitle(app: InstalledApp): string {
+  const parts: string[] = []
+  if (app.uid !== null) {
+    parts.push(`UID ${app.uid}`)
+  }
+  if (app.versionName !== null && app.versionName.length > 0) {
+    parts.push(app.versionName)
+  }
+  if (app.installedAt !== null) {
+    parts.push(formatInstalledAt(app.installedAt))
+  }
+  const meta = parts.join(' · ')
+  return meta.length > 0 ? `${meta}\n${app.package}` : app.package
+}
+
+/**
+ * The device's install/update wall clock, rendered as local time.
+ *
+ * The device prints `YYYY-MM-DD HH:MM:SS` with no zone, so parsing it as *this
+ * host's* local time is what the device meant — the backend deliberately passes
+ * the text through instead of converting it. Text that does not parse is shown
+ * verbatim rather than as `Invalid Date`.
+ */
+function formatInstalledAt(raw: string): string {
+  const date = new Date(raw.replace(' ', 'T'))
+  return Number.isNaN(date.getTime()) ? raw : date.toLocaleString('zh-CN')
 }
 
 /** Renders the resolved identity the way the spec describes it. */

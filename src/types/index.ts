@@ -191,6 +191,29 @@ export interface RunningApp {
   pids: number[]
 }
 
+/**
+ * One entry of the installed-applications picker.
+ *
+ * `label` is the display name the *device* resolved (`设置`, `酷玩`). It is empty
+ * when the device could not resolve one — `dumpsys package` only exposes a
+ * `labelRes` in that case — so the UI falls back to a name derived from the
+ * package. `installedAt` is the device's own local wall clock (`YYYY-MM-DD
+ * HH:MM:SS`) for `lastUpdateTime`, falling back to `firstInstallTime`; it is
+ * passed through as text because the backend has no time-zone database and
+ * converting it there would be off by the device's offset.
+ */
+export interface InstalledApp {
+  package: string
+  label: string
+  uid: number | null
+  /** True for a system (pre-installed) application. */
+  system: boolean
+  versionName: string | null
+  installedAt: string | null
+  targetSdk: number | null
+  enabled: boolean | null
+}
+
 /* ------------------------------------------------------------------ record */
 
 /** One decoded log line. */

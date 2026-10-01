@@ -96,6 +96,8 @@ export function App(): JSX.Element {
   const dismissError = useAppStore((state) => state.dismissError)
   const notice = useAppStore((state) => state.notice)
   const dismissNotice = useAppStore((state) => state.dismissNotice)
+  const selectedSerial = useAppStore((state) => state.selectedSerial)
+  const loadInstalledApps = useAppStore((state) => state.loadInstalledApps)
 
   useEffect(() => {
     if (bootstrapRequested) {
@@ -105,6 +107,23 @@ export function App(): JSX.Element {
     void bootstrap()
     revealWindow()
   }, [bootstrap])
+
+  /*
+    Load the installed list as soon as a device is selected, not only when the
+    picker is opened.
+   *
+    The running-apps list shows real application names, and those come from this
+    list — without this the rows fell back to names derived from the package
+    (com.deepseek.chat read as "Chat") until someone happened to open the picker.
+    The backend caches the probe per device, so this is one slow call per device
+    and instant afterwards; a failure is already reported through the store's own
+    error/notice handling.
+   */
+  useEffect(() => {
+    if (selectedSerial !== null) {
+      void loadInstalledApps()
+    }
+  }, [selectedSerial, loadInstalledApps])
 
   // Keep the native window surface in step with the theme, so resizing and the
   // close animation never expose the platform default colour.
