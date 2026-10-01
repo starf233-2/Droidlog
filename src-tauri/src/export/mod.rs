@@ -184,13 +184,29 @@ pub fn reveal(dir: &Path, path: &Path) -> Result<()> {
         )));
     }
 
-    // `explorer /select,<file>` opens the containing folder with the file
-    // highlighted; passing it as one argument keeps the comma and any spaces
-    // inside the path intact.
-    crate::executor::spawn_detached(
-        "explorer.exe",
-        vec![format!("/select,{}", canonical.display())],
-    )
+    // Each platform shows a file its own way: Windows selects it in Explorer
+    // (`/select,` with the comma and any spaces kept inside one argument), macOS
+    // does the same in Finder with `open -R`, and Linux has no "select this file"
+    // verb that `xdg-open` understands — so its containing folder is opened.
+    #[cfg(windows)]
+    {
+        crate::executor::spawn_detached(
+            "explorer.exe",
+            vec![format!("/select,{}", canonical.display())],
+        )
+    }
+    #[cfg(target_os = "macos")]
+    {
+        crate::executor::spawn_detached(
+            "open",
+            vec!["-R".to_owned(), canonical.display().to_string()],
+        )
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        let folder = canonical.parent().unwrap_or(&canonical);
+        crate::executor::spawn_detached("xdg-open", vec![folder.display().to_string()])
+    }
 }
 
 #[cfg(test)]
