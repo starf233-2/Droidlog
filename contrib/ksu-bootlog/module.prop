@@ -1,0 +1,6 @@
+id=droidlog_bootlog
+name=Droidlog Boot Log
+version=v1.0.0
+versionCode=10000
+author=starf233-2
+description=Rescues pstore/last_kmsg kernel crash logs at the earliest boot stage and snapshots the boot-time kernel log once. No continuous capture. Writes only to /data/adb/droidlog. Never touches system partitions.
