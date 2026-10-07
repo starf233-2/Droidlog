@@ -3,9 +3,9 @@
 #   powershell -ExecutionPolicy Bypass -File scripts\build-windows.ps1
 #
 # Outputs
-#   src-tauri\target\release\bundle\msi\Droidlog_0.1.2_x64_en-US.msi
-#   src-tauri\target\release\bundle\nsis\Droidlog_0.1.2_x64-setup.exe
-#   dist\Droidlog-0.1.2-portable\        (droidlog.exe + platform-tools\)
+#   src-tauri\target\release\bundle\msi\Droidlog_0.1.3_x64_en-US.msi
+#   src-tauri\target\release\bundle\nsis\Droidlog_0.1.3_x64-setup.exe
+#   dist\Droidlog-0.1.3-portable\        (droidlog.exe + platform-tools\)
 #
 # Prerequisites: Rust (MSVC toolchain), Node 18+ with pnpm, VS Build Tools with
 # "Desktop development with C++", WebView2 (built into Windows 11).
@@ -29,7 +29,7 @@ if (-not (Test-Path 'node_modules')) { pnpm install }
 pnpm tauri build
 
 $release = Join-Path $root 'src-tauri\target\release'
-$portable = Join-Path $root 'dist\Droidlog-0.1.2-portable'
+$portable = Join-Path $root 'dist\Droidlog-0.1.3-portable'
 if (Test-Path $portable) { Remove-Item $portable -Recurse -Force }
 New-Item -ItemType Directory -Path $portable -Force | Out-Null
 Copy-Item (Join-Path $release 'droidlog.exe') $portable
@@ -49,4 +49,4 @@ foreach ($file in $artifacts) {
     '{0,-46} {1,8:N2} MB  {2}' -f $file.Name, ($file.Length / 1MB), $hash
 }
 $portableSize = (Get-ChildItem $portable -Recurse -File | Measure-Object Length -Sum).Sum
-'{0,-46} {1,8:N2} MB  (portable folder)' -f 'dist\Droidlog-0.1.2-portable\', ($portableSize / 1MB)
+'{0,-46} {1,8:N2} MB  (portable folder)' -f 'dist\Droidlog-0.1.3-portable\', ($portableSize / 1MB)
