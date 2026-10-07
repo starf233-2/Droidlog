@@ -24,6 +24,10 @@ import type {
   ExecMode,
   ExportFormat,
   ExportOutcome,
+  IntegrityCheck,
+  ForensicsView,
+  TimelineSnapshot,
+  LiveEvent,
   FilterRule,
   InstalledApp,
   LogRecord,
@@ -109,10 +113,19 @@ export function refreshDevices(): Promise<boolean> {
 export function listSources(
   rootAvailable: boolean,
   recovery: boolean,
+  /**
+   * Whether the KernelSU boot-log module is installed on the device.
+   *
+   * The backend needs it to decide the module source's availability. Until the device probe
+   * reports it, `false` is the honest value: the source then appears with the reason it cannot
+   * run, rather than being offered and failing when selected.
+   */
+  module: boolean,
 ): Promise<SourceAvailability[]> {
   return invoke<SourceAvailability[]>('list_sources', {
     rootAvailable,
     recovery,
+    module,
   })
 }
 
@@ -274,4 +287,62 @@ export function listInstalledApps(
     mode,
     includeSystem,
   })
+}
+
+/**
+ * Live crash events a session produced, for the timeline view.
+ *
+ * A snapshot, not a drain: the view may be opened and closed repeatedly, and each
+ * opening must show the same story. Crash blocks re-emit as they grow under one id.
+ */
+export function getCrashEvents(sessionId: string): Promise<LiveEvent[]> {
+  return invoke<LiveEvent[]>('get_crash_events', { sessionId })
+}
+
+/**
+ * Integrity findings for a session, for the collection report.
+ *
+ * Six checks (records, drops, unparsed share, buffers, gaps, stackless crashes), each
+ * with a status and a sentence that says what to do about it.
+ */
+export function getIntegrity(sessionId: string): Promise<IntegrityCheck[]> {
+  return invoke<IntegrityCheck[]>('get_integrity', { sessionId })
+}
+/**
+ * The full forensics analysis for a session, computed from its own captured rows.
+ *
+ * Unlike `getCrashEvents` (a snapshot of what the live watch noticed), this runs the whole
+ * pipeline over the capture's text: causal links between processes, resource anomalies
+ * attached to their story, per-identity stories, and the integrity checks. The result
+ * carries `seqAt`, the map from the analysers' line numbering to capture sequence numbers
+ * — jump with `seqAt[lineIndex]`, never with `lineIndex` itself.
+ */
+export function getForensics(sessionId: string): Promise<ForensicsView> {
+  return invoke<ForensicsView>('get_forensics', { sessionId })
+}
+
+/**
+ * Remembers this capture's timeline, so a restart does not lose it.
+ *
+ * Resolves to `true` when it was written. A capture with no crashes is still worth remembering
+ * — "nothing crashed" is a result — so `false` means the write itself failed, and the reason is
+ * on the dev console rather than in the user's face.
+ */
+export function saveTimelineSnapshot(sessionId: string): Promise<boolean> {
+  return invoke<boolean>('save_timeline_snapshot', { sessionId })
+}
+
+/**
+ * The remembered timeline, or `null`.
+ *
+ * `null` covers every unusable case: nothing saved yet, unreadable JSON, or a file written by a
+ * different schema version. A wrong timeline would be worse than none.
+ */
+export function loadTimelineSnapshot(): Promise<TimelineSnapshot | null> {
+  return invoke<TimelineSnapshot | null>('load_timeline_snapshot')
+}
+
+/** Forgets the remembered timeline. */
+export function clearTimelineSnapshot(): Promise<boolean> {
+  return invoke<boolean>('clear_timeline_snapshot')
 }

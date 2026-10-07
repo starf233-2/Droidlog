@@ -255,3 +255,25 @@
   --dl-level-fatal-bg: #2b2229;
   --dl-level-unknown-bg: #24282b;
 }
+
+/* ---------------------------------------------------------------------------
+ * Collapse / expand motion (single source of truth)
+ *
+ * Every expand-collapse in the app goes through these four tokens; no component
+ * hard-codes a duration or a curve. Expand and collapse differ on purpose: M3's
+ * standard-decelerate for the thing that appears, standard-accelerate for the thing
+ * that leaves — the asymmetry is what makes a pair feel like one gesture.
+ *
+ * Nothing here animates height or max-height: the mechanism is
+ * `grid-template-rows: 0fr -> 1fr`, which the browser interpolates itself. See
+ * `components/Collapse.tsx` for the mechanics and the invariants.
+ * ------------------------------------------------------------------------- */
+:root {
+  --dl-collapse-open-duration: 250ms;
+  --dl-collapse-close-duration: 200ms;
+  --dl-collapse-open-ease: cubic-bezier(0.2, 0, 0, 1); /* M3 standard-decelerate */
+  --dl-collapse-close-ease: cubic-bezier(0.4, 0, 1, 1); /* M3 standard-accelerate */
+  /* The content starts moving a beat after the box does, so the text does not smear
+     against a box that is still opening. */
+  --dl-collapse-content-delay: 60ms;
+}

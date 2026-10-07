@@ -66,6 +66,8 @@ export function Toolbar(): JSX.Element {
   const setTheme = useAppStore((state) => state.setTheme)
   const colorTheme = useAppStore((state) => state.colorTheme)
   const setColorTheme = useAppStore((state) => state.setColorTheme)
+  const scrollBlur = useAppStore((state) => state.scrollBlur)
+  const setScrollBlur = useAppStore((state) => state.setScrollBlur)
 
   const running = sessions.filter((session) => session.status.state === 'running')
   const selectedEntry =
@@ -109,6 +111,24 @@ export function Toolbar(): JSX.Element {
                   title="设备处于 Recovery／Sideload 模式：没有 logcat，可采集 Recovery 日志"
                 >
                   Recovery 模式
+                </span>
+              ) : null}
+              {/*
+                The boot-log module badge. It appears only when the device probe found the module
+                installed, which is the whole point: the module rescues kernel evidence at the
+                earliest boot stage, so its badge is a statement about that device, not a button
+                the user can press into existence.
+
+                The wording says "installed" rather than just "module" on purpose: the chip on the
+                right already names the selected collector, and when that collector is the module
+                source the two would otherwise read identically.
+              */}
+              {selectedDevice.ksuModule ? (
+                <span
+                  className="dl-chip dl-chip--accent"
+                  title="已刷入 Droidlog Boot Log 模块：开机时会抢救 pstore 与内核日志，可用「模块」采集源读取"
+                >
+                  模块已安装
                 </span>
               ) : null}
             </>
@@ -219,6 +239,28 @@ export function Toolbar(): JSX.Element {
                 label={entry.label}
               />
             ))}
+          </OutlinedSegmentedButtonSet>
+
+          {/*
+            The scroll motion blur switch, in the appearance cluster rather than a new area —
+            it is an appearance preference like the two above it. "清晰" is the default until the
+            effect has been measured against its acceptance bar (lib/scroll-blur.ts); turning it
+            on installs the sampler, turning it off means the sampler never runs at all.
+          */}
+          <OutlinedSegmentedButtonSet
+            className="dl-segmented"
+            selectType="single"
+            size="xsmall"
+            selectedIcon="✓"
+            value={scrollBlur ? 'on' : 'off'}
+            onChange={(value) => {
+              const next = Array.isArray(value) ? value[0] : value
+              setScrollBlur(next === 'on')
+            }}
+            aria-label="滚动动态模糊"
+          >
+            <OutlinedSegmentedButton value="on" label="模糊" />
+            <OutlinedSegmentedButton value="off" label="清晰" />
           </OutlinedSegmentedButtonSet>
         </div>
 

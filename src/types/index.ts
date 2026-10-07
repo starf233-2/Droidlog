@@ -22,6 +22,13 @@ export type LogSourceKind =
   | 'crash'
   | 'boot'
   | 'recovery'
+  /**
+   * The KernelSU boot-log module's rescued kernel evidence.
+   *
+   * Offered only when the device has the module installed *and* the session runs in Root mode:
+   * the files live under `/data/adb`, which is `0700 root`.
+   */
+  | 'module'
 
 /**
  * Which decoder a source's output needs.
@@ -98,6 +105,14 @@ export interface DeviceInfo {
    * both change shape for it.
    */
   recovery: boolean
+  /**
+   * True when the Droidlog Boot Log KernelSU module is installed on the device.
+   *
+   * The device probe answers this through root (`/data/adb` is root-only), so it stays `false`
+   * on a device without root even if the module were present. It gates the module collector's
+   * availability and lights the toolbar badge.
+   */
+  ksuModule: boolean
 }
 
 /** Static build metadata. */
@@ -151,6 +166,14 @@ export interface SourceOptions {
   buffers?: LogcatBuffer[]
   /** Run this device-side command instead of the source's built-in one. */
   customCommand?: string
+  /**
+   * Add the events buffer when the device has one.
+   *
+   * The events buffer is where ActivityManager announces m_crash, m_proc_died and
+   * m_kill — the cheapest way to tell a crash source from the processes torn down
+   * around it. The backend drops the request on a ROM without that buffer.
+   */
+  includeEvents?: boolean
 }
 
 /* ------------------------------------------------------- application target */
@@ -491,4 +514,212 @@ export interface BackendError {
    * than bugs — the UI shows a hint instead of a failure banner.
    */
   environmental: boolean
+}
+
+/* ------------------------------------------------------- crash forensics */
+
+/** Where a structured crash came from (mirrors `crash::structured::CrashOrigin`). */
+export type CrashOrigin = 'crashBuffer' | 'dropbox' | 'tombstone' | 'anrTrace' | 'kernel'
+
+/** One crash, as far as it could be understood (mirrors `CrashEvent`). */
+export interface CrashEvent {
+  id: string
+  origin: CrashOrigin
+  kind: CrashKind | null
+  process: string | null
+  pid: number | null
+  tid: number | null
+  thread: string | null
+  exception: string | null
+  message: string | null
+  /** Stack frames, verbatim, in device order. */
+  frames: string[]
+  /** `Caused by:` lines — the root cause of a Java crash. */
+  causedBy: string[]
+  timestamp: string | null
+  /** The source lines, verbatim. Never empty. */
+  raw: string[]
+}
+
+/** What an ActivityManager signal says happened (mirrors `AmsSignalKind`). */
+export type AmsSignalKind =
+  | 'amCrash'
+  | 'amAnr'
+  | 'amProcDied'
+  | 'amKill'
+  | 'amProcStart'
+  | 'forceFinish'
+  | 'forceStop'
+  | 'killing'
+  | 'processDied'
+  | 'isCrashing'
+  | 'anrIn'
+  | 'restart'
+  | 'processRecord'
+
+/** One parsed ActivityManager signal. */
+export interface AmsSignal {
+  kind: AmsSignalKind
+  process: string | null
+  pid: number | null
+  uid: number | null
+  reason: string | null
+  crashing: boolean | null
+  detail: string | null
+  /** Index of the source line, so the timeline can jump to the row. */
+  lineIndex: number
+  raw: string
+}
+
+/** Which resource ran out (mirrors `ResourceKind`). */
+export type ResourceKind =
+  | 'lowMemoryKill'
+  | 'outOfMemory'
+  | 'fdExhaustion'
+  | 'threadExhaustion'
+  | 'binderFailure'
+
+/** One recognised resource anomaly. */
+export interface ResourceAnomaly {
+  kind: ResourceKind
+  severity: 'warning' | 'critical'
+  process: string | null
+  pid: number | null
+  detail: string
+  lineIndex: number
+  raw: string
+}
+
+/**
+ * Something the live watch decided was worth reporting.
+ *
+ * The payload is internally tagged (`type`) to match the Rust enum's serde shape, so a
+ * consumer switches on `payload.type` and the remaining fields belong to that event.
+ */
+export type LiveEvent = {
+  /** Stable id: crash blocks keep it while they grow, so a consumer can replace. */
+  id: string
+  /** False while a crash block is still receiving lines. */
+  complete: boolean
+  /** Capture-local sequence number of the line this came from. */
+  lineIndex: number
+} & (
+  | { payload: { type: 'crash' } & CrashEvent }
+  | { payload: { type: 'ams' } & AmsSignal }
+  | { payload: { type: 'anomaly' } & ResourceAnomaly }
+)
+
+/** One integrity finding (mirrors `IntegrityCheck`). */
+export interface IntegrityCheck {
+  id: string
+  label: string
+  status: 'ok' | 'notice' | 'warning'
+  detail: string
+}
+/* ----------------------------------------------- crash forensics analysis */
+
+/**
+ * A `source → victim` link: the process whose crash is believed to have taken the
+ * victim down with it (mirrors `crash::ams::CausalLink`).
+ *
+ * `evidence` is the analyser's own record of where the link came from: a list of **line
+ * indices into the text it was handed**, verified against `CausalLink.evidence: Vec<usize>`
+ * in `crash/ams.rs`. Those are not capture sequence numbers — translate through
+ * `ForensicsView.seqAt` before jumping, or the row will be wrong.
+ */
+export interface CausalLink {
+  source: string
+  sourcePid: number | null
+  victim: string
+  victimPid: number | null
+  /** Why the analyser linked them, in words — this is what the view shows. */
+  reason: string
+  /** Line indices of the lines that produced the link, in the analyser's numbering. */
+  evidence: number[]
+  confidence: number
+}
+
+/**
+ * One process's story across pid changes (the fields the view uses).
+ *
+ * `crashes` is `unknown[]` rather than `CrashEvent[]`: the view only counts them, and the
+ * structured crashes the timeline renders come from the live watch, which is typed above.
+ */
+export interface CrashStory {
+  identity: string
+  uid: number | null
+  crashes: unknown[]
+  /**
+   * The links that took other processes down around this identity.
+   *
+   * These are `CausalLink`s, not names — verified against `correlate::CrashStory.victims`,
+   * which a test caught when an assertion compared them to strings. Rendering them as names
+   * printed `[object Object]`; the name lives in `victim.victim`, and the link additionally
+   * carries the reason and the evidence.
+   */
+  victims: CausalLink[]
+}
+
+/** The analysis the forensics view renders. */
+export interface Forensics {
+  links: CausalLink[]
+  anomalies: ResourceAnomaly[]
+  correlation: {
+    stories: CrashStory[]
+    unlinkedEvents: number
+    unlinkedLinks: number
+  }
+  checks: IntegrityCheck[]
+  /** Crashes that matched a known signature, with a cause instead of a stack. */
+  known: KnownNote[]
+}
+
+/** A crash that matched a known signature (mirrors `crash::known::KnownNote`). */
+export interface KnownNote {
+  /** The crash this describes — the same id the timeline uses. */
+  eventId: string
+  /** What it is, in a few words. */
+  title: string
+  /** The root cause. */
+  cause: string
+  /** What to do about it. */
+  action: string
+}
+
+/**
+ * [`Forensics`] plus the map from analyser line index to capture sequence number.
+ *
+ * The analysers number the lines they were handed from zero; the table jumps by capture
+ * sequence. Every jump from the forensics view goes through `seqAt`, otherwise it lands
+ * on the wrong row.
+ */
+export interface ForensicsView {
+  analysis: Forensics
+  seqAt: number[]
+  /**
+   * A capture-level remark, or `null`.
+   *
+   * Today: whether the rows carry more than one date. The crash buffer is a ring, so a
+   * capture can legitimately include older crashes — which changes what the timeline is
+   * describing, and must be said rather than left for the reader to notice.
+   */
+  notice: string | null
+}
+
+/**
+ * The remembered timeline of the latest capture (mirrors `crash::store::TimelineSnapshot`).
+ *
+ * Written by `save_timeline_snapshot` when the view loads a capture, and read on startup so
+ * reopening the app does not throw away what the user was just looking at. Only the *latest*
+ * capture is kept, in one file, on purpose: an archive would need retention rules nobody asked
+ * for. The log rows themselves are not stored — they live in the ring buffer.
+ */
+export interface TimelineSnapshot {
+  /** Schema version; a file from another version is ignored rather than half-read. */
+  version: number
+  sessionId: string
+  /** Host wall-clock time it was written, ms since the Unix epoch. */
+  savedAtMs: number
+  events: LiveEvent[]
+  view: ForensicsView
 }

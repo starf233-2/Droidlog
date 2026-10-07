@@ -986,3 +986,474 @@
     grid-template-columns: 232px minmax(0, 1fr) 280px;
   }
 }
+
+/* The row a timeline jump landed on: a surface tone plus an outline, because the
+   table already spends its saturation on level badges and crash markers, and an
+   outline (unlike a border) does not move the grid. */
+.dl-log-row--jump {
+  background: var(--dl-surface-container-high, rgba(127, 127, 127, 0.18));
+  outline: 2px solid var(--dl-error, #b3261e);
+  outline-offset: -2px;
+}
+
+
+/* ============================================================================
+ * Material Design 3 pass: shape, motion and focus
+ *
+ * The layout already used surface-container tones and hairline outlines, but the
+ * shape scale was missing entirely (33 rules on interactive and surface classes
+ * had no radius at all) and the file had three transitions in total, which is why
+ * hover and selection felt abrupt. Nothing here changes colour, layering or
+ * spacing: it adds the shape tokens the contract calls for (control 8 / nested 6 /
+ * surface 12), motion on state changes, and a visible keyboard focus ring.
+ * ========================================================================== */
+
+:root {
+  --dl-radius-control: 8px;
+  --dl-radius-nested: 6px;
+  --dl-radius-surface: 12px;
+  --dl-motion-fast: 120ms;
+  --dl-motion-ease: cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* Controls: buttons, chips, segmented items, inputs, tags. */
+.dl-chip,
+.dl-segmented,
+.dl-segmented > *,
+.dl-tag,
+.dl-badge,
+.dl-panel__action,
+.dl-session,
+.dl-session__stop,
+.dl-countdown,
+.dl-rail__action,
+input,
+select,
+textarea {
+  border-radius: var(--dl-radius-control);
+}
+
+/* Surfaces: panels, cards, the raised chrome. */
+.dl-panel,
+.dl-filters,
+.dl-rail,
+.dl-rail__section,
+.dl-forensics,
+.dl-timeline,
+.dl-probe,
+.dl-empty {
+  border-radius: var(--dl-radius-surface);
+}
+
+/* Nested items inside a surface step down one notch, per the shape contract. */
+.dl-apps__item,
+.dl-log-row,
+.dl-logs__head-cell,
+.dl-probe__command,
+.dl-scroll,
+.dl-rail__body {
+  border-radius: var(--dl-radius-nested);
+}
+
+/* The jump target is a surface tone plus an outline; round it to match its neighbours. */
+.dl-log-row--jump {
+  border-radius: var(--dl-radius-nested);
+}
+
+/* Motion: state changes should read as changes, not as jumps. */
+.dl-log-row,
+.dl-apps__item,
+.dl-probe,
+.dl-chip,
+.dl-segmented > *,
+.dl-panel__action,
+.dl-rail__action,
+.dl-session__stop,
+.dl-tag,
+.dl-scroll {
+  transition:
+    background-color var(--dl-motion-fast) var(--dl-motion-ease),
+    color var(--dl-motion-fast) var(--dl-motion-ease),
+    outline-color var(--dl-motion-fast) var(--dl-motion-ease);
+}
+
+/* Keyboard focus must be visible on every control; mouse clicks stay quiet. */
+.dl-chip:focus-visible,
+.dl-segmented > *:focus-visible,
+.dl-panel__action:focus-visible,
+.dl-rail__action:focus-visible,
+.dl-apps__item:focus-visible,
+.dl-log-row:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--dl-primary, #4a6572);
+  outline-offset: 2px;
+  border-radius: var(--dl-radius-control);
+}
+
+/* Scrollbars take the same shape language instead of the platform's square bars. */
+.dl-scroll::-webkit-scrollbar-thumb,
+.dl-rail__body::-webkit-scrollbar-thumb {
+  border-radius: var(--dl-radius-nested);
+}
+
+/* The active source tab: a surface tone, not a new colour — the tab strip selects a view,
+   it does not carry information. */
+.dl-tab--on {
+  background: var(--dl-surface-container-high, rgba(127, 127, 127, 0.18));
+}
+
+/* ============================================================================
+ * Crash forensics: one card per section
+ *
+ * The sections used to be separated only by their heading, so the panel read as
+ * one undifferentiated block and it was hard to see where "已知崩溃模式" ended and
+ * "完整性告警" began. Each section is now a card: the surface tone, one hairline
+ * outline and the shape token already in use for surfaces (12px), with the stack
+ * gap keeping cards from touching. No new colours, no shadows — the same depth
+ * language the rest of the app uses.
+ * ========================================================================== */
+
+.dl-forensics {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.dl-forensics__group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px 10px;
+  border: 1px solid var(--dl-outline-variant, rgba(127, 127, 127, 0.28));
+  border-radius: var(--dl-radius-surface);
+  background: var(--dl-surface-container, rgba(127, 127, 127, 0.06));
+}
+
+/* The heading belongs to the card, not to the list: it sits above the rows with a
+   little air and a divider-free separation, which is what makes the grouping read. */
+.dl-forensics__title {
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  opacity: 0.78;
+}
+
+/* Rows inside a card: a nested step of the shape scale, and they must not spill
+   past the card's rounded corner. */
+.dl-forensics__group .dl-apps__item {
+  border-radius: var(--dl-radius-nested);
+}
+
+.dl-forensics__group .dl-apps__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dl-forensics__group .dl-apps__package {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 60ch;
+}
+
+/* ============================================================================
+ * Crash timeline: the source tab strip
+ *
+ * It reused `.dl-target__row`, which belongs to the filter panel's target field and
+ * carries positioning meant for that field — so inside the timeline the tabs floated
+ * over the panel's own header line. This is a plain wrapping row of buttons with its
+ * own spacing, which cannot collide with anything.
+ * ========================================================================== */
+
+.dl-timeline__tabs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 0 4px;
+  position: static;
+}
+
+.dl-timeline__tabs > * {
+  flex: 0 0 auto;
+}
+
+/* The panel header (collapse toggle + counts) is its own line above the tabs. */
+.dl-timeline > .dl-target__row {
+  margin-bottom: 2px;
+}
+
+/* ============================================================================
+ * Motion, part two: sections arrive instead of appearing
+ *
+ * Expand/collapse here mounts its content (the panel is not kept in the DOM), so an
+ * exit animation is impossible — the node is gone. The entrance therefore carries the
+ * motion: a 180 ms fade with a 2 px rise, on the same easing curve as the rest of the
+ * app. Switching a timeline tab re-mounts the rows, so the same animation makes a tab
+ * change read as a change rather than a jump.
+ * ========================================================================== */
+
+
+
+
+
+
+/* ============================================================================
+ * Collapse mechanism (see components/Collapse.tsx)
+ *
+ * The box interpolates `grid-template-rows` between 0fr and 1fr. Nothing animates
+ * height or max-height, and no padding or margin lives on the overflow container.
+ * Durations and curves come from tokens.css; the arrow uses the same pair so the
+ * rotation and the box read as one gesture.
+ * ========================================================================== */
+
+.dl-collapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--dl-collapse-close-duration) var(--dl-collapse-close-ease);
+}
+
+.dl-collapse[data-state='open'] {
+  grid-template-rows: 1fr;
+  transition: grid-template-rows var(--dl-collapse-open-duration) var(--dl-collapse-open-ease);
+}
+
+/* Before the first paint-after-mount there is no transition at all, so a panel never
+   animates in from an unlaid-out state. */
+.dl-collapse[data-anim='off'] {
+  transition: none;
+}
+
+.dl-collapse__inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Settled and open: the clip is released so a focus ring is never cut off. */
+.dl-collapse[data-state='open'][data-settled='yes'] .dl-collapse__inner {
+  overflow: visible;
+}
+
+.dl-collapse__content {
+  opacity: 0;
+  transform: translateY(-4px);
+  transition:
+    opacity var(--dl-collapse-close-duration) var(--dl-collapse-close-ease),
+    transform var(--dl-collapse-close-duration) var(--dl-collapse-close-ease);
+}
+
+.dl-collapse[data-state='open'] .dl-collapse__content {
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity var(--dl-collapse-open-duration) var(--dl-collapse-open-ease)
+      var(--dl-collapse-content-delay),
+    transform var(--dl-collapse-open-duration) var(--dl-collapse-open-ease)
+      var(--dl-collapse-content-delay);
+}
+
+.dl-collapse[data-anim='off'] .dl-collapse__content {
+  transition: none;
+}
+
+/* Closed and settled: zero height by the grid, and out of the tab order entirely. */
+.dl-collapse[data-state='closed'][data-settled='yes'] .dl-collapse__content {
+  visibility: hidden;
+}
+
+.dl-collapse__arrow {
+  display: inline-block;
+  transition: transform var(--dl-collapse-close-duration) var(--dl-collapse-close-ease);
+}
+
+.dl-collapse__arrow[data-state='open'] {
+  transform: rotate(180deg);
+  transition: transform var(--dl-collapse-open-duration) var(--dl-collapse-open-ease);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dl-collapse,
+  .dl-collapse__content,
+  .dl-collapse__arrow {
+    transition-duration: 0ms;
+  }
+
+  .dl-collapse__content {
+    transform: none;
+  }
+}
+
+/* ============================================================================
+ * The timeline panel's own chrome: keep it to one compact row
+ *
+ * The collapse mechanism already takes the *content* to zero height when closed, so
+ * the panel's collapsed footprint is its header plus its padding — and that was tall
+ * enough to read as an empty card. These three rules trim exactly those two things.
+ * Nothing here touches the mechanism (grid rows, tokens, transitions).
+ * ========================================================================== */
+
+.dl-timeline {
+  /* Symmetric on purpose: the previous 6px top / 8px bottom made the collapsed header sit
+     with more air below the text than above it, which reads as a misaligned card even
+     though the box itself is fine. */
+  padding: 6px 10px;
+}
+
+.dl-timeline > .dl-target__row {
+  margin: 0;
+  padding: 0;
+  gap: 8px;
+  min-height: 0;
+  align-items: center;
+}
+
+.dl-timeline .dl-panel__hint {
+  line-height: 1.3;
+}
+
+/* ============================================================================
+ * Scroll motion blur (see lib/scroll-blur.ts)
+ *
+ * The `defs` SVG must not take part in layout, and the layer the filter is applied to
+ * must not have been given a compositing hint of its own: the rules for this feature
+ * forbid a standing `will-change`, and while idle the layer carries no `filter` either.
+ * ========================================================================== */
+
+.dl-blur-defs {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.dl-logs__window {
+  /* Nothing here on purpose: the filter is attached and removed by the sampler, and an
+     idle layer must stay a plain box. */
+}
+
+/* ============================================================================
+ * Toolbar: the appearance cluster must not squeeze the status cluster
+ *
+ * Adding the blur switch to the appearance cluster pushed the row past its width, and the
+ * status text there ("采集中 1 · 行 …") ended up under its neighbour. The clusters are flex
+ * items: the fix is to let the text ones shrink with an ellipsis and keep the controls at
+ * their natural size, instead of letting everything overlap.
+ * ========================================================================== */
+
+.dl-toolbar__left,
+.dl-toolbar__right {
+  min-width: 0;
+}
+
+.dl-toolbar__right {
+  flex: 0 1 auto;
+  flex-wrap: nowrap;
+}
+
+/* Anything that reads as a status line truncates rather than colliding. */
+.dl-toolbar .dl-panel__hint,
+.dl-toolbar .dl-toolbar__status {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dl-toolbar__right > * {
+  flex: 0 0 auto;
+}
+
+/* ============================================================================
+ * Toolbar overlap: clip the informative cluster, never the controls
+ *
+ * The two clusters are flex items with `min-width: 0` but visible overflow, so when
+ * their combined width exceeded the bar they painted over each other — the session
+ * stats ("采集中 1 · 行 …") landing on top of the ADB/Root control. `overflow: hidden`
+ * on the clusters turns overlap into clipping, and the stats span gets an ellipsis so
+ * the number it exists for stays readable.
+ *
+ * The earlier attempt at this used `.dl-toolbar__status`, which does not exist: the real
+ * class is `.dl-toolbar__stats`.
+ * ========================================================================== */
+
+.dl-toolbar__left,
+.dl-toolbar__right {
+  flex: 0 1 auto;
+  overflow: hidden;
+}
+
+.dl-toolbar__stats {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Controls keep their size; only text may be clipped. */
+.dl-toolbar__left > button,
+.dl-toolbar__left > .dl-segmented,
+.dl-toolbar__right > button,
+.dl-toolbar__right > .dl-segmented,
+.dl-toolbar__themes {
+  flex: 0 0 auto;
+}
+
+/* ============================================================================
+ * Toolbar overlap, second attempt: truncate the chip, not the cluster
+ *
+ * `overflow: hidden` on the clusters turned the overlap into clipping — and clipped a
+ * source badge ("logcat") in half, which is worse than the overlap it fixed. The chip
+ * itself is what should give way: it truncates with an ellipsis and keeps its own border
+ * and padding, so a badge that does not fit reads as shortened rather than broken.
+ * ========================================================================== */
+
+.dl-toolbar__left .dl-chip,
+.dl-toolbar__right .dl-chip {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ============================================================================
+ * The collapsed timeline title: vertical centring, with enough weight to win
+ *
+ * `align-items: center` was already correct on the row, so the air below the title came
+ * from the *panel's* padding — and a single-class rule at the end of this file lost to a
+ * rule of the same specificity in one of the other stylesheets. Two classes settle it.
+ * ========================================================================== */
+
+.dl-panel__section.dl-timeline {
+  /* Symmetric: this is the whole height of the collapsed panel. */
+  padding: 6px 10px;
+}
+
+.dl-timeline > .dl-target__row > * {
+  margin: 0;
+}
+
+/* ============================================================================
+ * The real cause of the off-centre title: the panel's own column gap
+ *
+ * `.dl-panel__section` is a column flex with `gap: 8px` (app.css:702). The collapse box is
+ * a child of that flex container, so even at zero height the gap around it stayed — which
+ * put 8px of air *below* the header and made the collapsed panel read as "title not
+ * centred". Zeroing the gap here and moving the spacing onto the content itself is the
+ * same rule as everywhere else: padding goes on the inner elements, not on the box that
+ * appears and disappears.
+ * ========================================================================== */
+
+.dl-panel__section.dl-timeline {
+  gap: 0;
+}
+
+.dl-timeline .dl-collapse__content {
+  /* The spacing the header used to get from the flex gap, now inside the content. */
+  padding-top: 6px;
+}

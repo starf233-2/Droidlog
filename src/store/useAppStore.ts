@@ -183,6 +183,14 @@ export type ThemeChoice = 'light' | 'dark' | 'system'
 const THEME_KEY = 'droidlog.theme'
 const COLOR_THEME_KEY = 'droidlog.color-theme'
 
+/**
+ * Storage key for the scroll motion blur preference.
+ *
+ * It lives beside the theme keys because it is an appearance preference, and it is stored as
+ * `'on'`/`'off'` so a missing value is distinguishable from an explicit "off".
+ */
+const SCROLL_BLUR_KEY = 'droidlog.scroll-blur'
+
 /** A stored value, or null when there is nothing usable to restore. */
 function readStored(key: string): string | null {
   try {
@@ -235,6 +243,8 @@ let frameScheduled = false
 /** Handle of the app-launch watcher, and whether it is armed for a first start. */
 let watchTimer: number | null = null
 let watchArmed = true
+/** Last target key seen by the watcher, so it only writes through on real changes. */
+let lastWatchKey = ''
 
 /** How often the watcher asks the device whether the app is up. */
 const WATCH_INTERVAL_MS = 1000
@@ -253,10 +263,24 @@ function startWatch(get: () => AppStore, set: (partial: Partial<AppStore>) => vo
     if (!watching || selectedSerial === null || appTargetInput.trim().length === 0) {
       return
     }
+    // Poll through the *cached* resolution: it costs at most one adb round trip per
+    // cache lifetime, where writing the target through every second re-read the whole
+    // `ps` table each time. The stored target is only refreshed when something actually
+    // moved (the app appeared, restarted, or went away) — which is exactly the event the
+    // watcher exists to notice.
     void api
-      .setAppTarget(selectedSerial, mode, appTargetInput)
+      .resolveApp(selectedSerial, mode, appTargetInput)
       .then((resolved) => {
-        get().applyAppTarget(resolved)
+        const key = `${resolved === null ? 'none' : `${resolved.found}|${resolved.package ?? ''}|${resolved.pids.join(',')}`}`
+        if (key !== lastWatchKey) {
+          lastWatchKey = key
+          void api
+            .setAppTarget(selectedSerial, mode, appTargetInput)
+            .then((stored) => get().applyAppTarget(stored))
+            .catch(() => {
+              // A transient adb failure is not a reason to stop watching.
+            })
+        }
         const up = resolved !== null && resolved.found && resolved.pids.length > 0
         if (!up) {
           // Gone again: the next start is worth catching.
@@ -332,6 +356,14 @@ interface AppStore {
   /** Which colour theme the M3 tokens are generated from. */
   colorTheme: ColorThemeId
   setColorTheme: (theme: ColorThemeId) => void
+  /**
+   * Whether the log table blurs itself while scrolling fast.
+   *
+   * Presentation only. `false` means the sampler is never installed (see
+   * `lib/scroll-blur.ts`), not that it runs and does nothing.
+   */
+  scrollBlur: boolean
+  setScrollBlur: (enabled: boolean) => void
 
   /* --------------------------------------------------------------- adb */
   adb: AdbProbe | null
@@ -537,6 +569,10 @@ export const useAppStore = create<AppStore>((set, get) => ({
   /* ------------------------------------------------------------- chrome */
   theme: initialThemeChoice(),
   colorTheme: initialColorTheme(),
+  // Off until a capture's worth of measurement says the effect meets its acceptance bar: the
+  // rules for it are explicit that an unmeasured effect stays off rather than shipping lower.
+  // The switch is live either way, so it can be turned on to look at it.
+  scrollBlur: readStored(SCROLL_BLUR_KEY) === 'on',
   setTheme: (theme) => {
     applyTheme(theme, get().colorTheme)
     writeStored(THEME_KEY, theme)
@@ -546,6 +582,11 @@ export const useAppStore = create<AppStore>((set, get) => ({
     applyTheme(get().theme, colorTheme)
     writeStored(COLOR_THEME_KEY, colorTheme)
     set({ colorTheme })
+  },
+
+  setScrollBlur: (enabled) => {
+    writeStored(SCROLL_BLUR_KEY, enabled ? 'on' : 'off')
+    set({ scrollBlur: enabled })
   },
 
   /* --------------------------------------------------------------- adb */
@@ -778,7 +819,15 @@ export const useAppStore = create<AppStore>((set, get) => ({
         serial: selectedSerial,
         mode,
         source: selectedSource,
-        ...(trimmed.length > 0 ? { options: { customCommand: trimmed } } : {}),
+        // Crash forensics asks for the `events` buffer on every logcat session: that is
+        // where `am_crash` / `am_proc_died` / `am_kill` live, and they are what let a
+        // crash source be told apart from the processes Force finished with it. The
+        // backend drops the request when the device has no such buffer, so this cannot
+        // break a ROM that lacks it.
+        options: {
+          includeEvents: selectedSource === 'logcat',
+          ...(trimmed.length > 0 ? { customCommand: trimmed } : {}),
+        },
       })
       set({
         sessions: get().sessions.concat(started),
@@ -836,6 +885,10 @@ export const useAppStore = create<AppStore>((set, get) => ({
       crashes: [],
       jumpToSeq: null,
     })
+    // The remembered timeline describes the rows that were just cleared, so it goes with them:
+    // hydrating it later would show a story whose log lines no longer exist. Fire-and-forget —
+    // clearing records must not wait on the disk, and the timeline is already gone from view.
+    void api.clearTimelineSnapshot().catch(() => undefined)
   },
 
   crashCount: () => get().crashes.length,
@@ -1294,7 +1347,13 @@ async function refreshSources(
     // `mode === 'root'` doubles as the privilege signal: Root mode is only
     // reachable when the device can escalate, and that is exactly what decides
     // whether dmesg/kmsg are offered. `recovery` decides the recovery collector.
-    const sources = await api.listSources(mode === 'root', recovery)
+    //
+    // The module flag is read from the store rather than passed in. It comes from the device
+    // probe (`DeviceInfo.ksuModule`), and the three call sites already recompute `recovery` by
+    // hand — adding a fourth hand-threaded argument would be three more chances to forget one,
+    // which is exactly how the recovery collector once ended up permanently unavailable.
+    const module = useAppStore.getState().selectedDevice()?.ksuModule === true
+    const sources = await api.listSources(mode === 'root', recovery, module)
     const current = sources.find((entry) => entry.spec.kind === selectedSource)
     const next =
       current?.available === true

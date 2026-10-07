@@ -55,6 +55,8 @@ const SOURCE_LABELS: Record<LogSourceKind, string> = {
   crash: '崩溃日志',
   boot: '启动日志',
   recovery: 'Recovery 日志',
+  // The KernelSU module's rescued kernel evidence. Kept short: this string is the badge.
+  module: '模块',
 }
 
 /** Readable name of a failure family. */

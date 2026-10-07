@@ -25,6 +25,7 @@ import type { JSX } from 'react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { TextButton } from 'material-expressive-react'
 
+import { attachScrollBlur, SCROLL_BLUR_VERIFIED } from '../lib/scroll-blur'
 import { useAppStore } from '../store/useAppStore'
 import {
   formatMessage,
@@ -75,6 +76,9 @@ const COLUMNS: readonly {
   { key: 'timestamp', label: '时间', width: 'minmax(80px, 130px)', align: 'left' },
   { key: 'pid', label: 'PID', width: 'minmax(44px, 58px)', align: 'right' },
   { key: 'tid', label: 'TID', width: 'minmax(44px, 58px)', align: 'right' },
+  // The capture's own sequence number: it is what the crash timeline's evidence
+  // numbers refer to, so a reader can match a timeline row to a table row by eye.
+  { key: 'seq', label: '记录', width: '56px', align: 'right' },
   { key: 'tag', label: 'TAG', width: 'minmax(60px, 130px)', align: 'left' },
   { key: 'source', label: '来源', width: 'minmax(52px, 72px)', align: 'left' },
   {
@@ -176,12 +180,15 @@ function usePrefersReducedMotion(): boolean {
 function LogRowView({
   row,
   crash,
+  jumped,
 }: {
   row: LogRow
   // Explicitly `| undefined`: the project runs with
   // `exactOptionalPropertyTypes`, under which an absent property and one set to
   // `undefined` are different types.
   crash: CrashKind | undefined
+  // True for the row the timeline just jumped to: the eye needs a landing point.
+  jumped: boolean
 }): JSX.Element {
   // Unparsed lines are dimmed and marked, but they are *never* hidden: they are
   // frequently the only record of a vendor-specific format.
@@ -192,7 +199,7 @@ function LogRowView({
   const marked = crash === undefined ? '' : ' dl-log-row--crash'
   return (
     <div
-      className={`dl-log-row${raw}${marked}`}
+      className={`dl-log-row${raw}${marked}${jumped ? ' dl-log-row--jump' : ''}`}
       style={{ height: `${ROW_HEIGHT}px` }}
     >
       {crash === undefined ? (
@@ -217,6 +224,9 @@ function LogRowView({
       <span className={`dl-log-row__num dl-mono ${alignClass('right')}`}>
         {formatOptionalNumber(row.tid)}
       </span>
+      <span className={`dl-log-row__num dl-mono ${alignClass('right')}`} title={`采集序号 ${row.seq}`}>
+        {row.seq}
+      </span>
       <span className={`dl-log-row__tag dl-mono ${alignClass('left')}`} title={row.tag ?? undefined}>
         {row.tag ?? '-'}
       </span>
@@ -240,6 +250,11 @@ export function LogTable(): JSX.Element {
   const crashOnly = useAppStore((state) => state.crashOnly)
   const setCrashOnly = useAppStore((state) => state.setCrashOnly)
   const jumpToSeq = useAppStore((state) => state.jumpToSeq)
+  // The appearance switch for scroll motion blur; the sampler is never installed when off.
+  const scrollBlur = useAppStore((state) => state.scrollBlur)
+  // The collection report answers the question an empty table raises: was there
+  // nothing to collect, or did the capture fail? Its per-probe rows are in the panel.
+  const report = useAppStore((state) => state.activeReport())
   const clearJump = useAppStore((state) => state.clearJump)
   const jumpToNextCrash = useAppStore((state) => state.jumpToNextCrash)
   const collect = useAppStore((state) => state.collect)
@@ -496,6 +511,33 @@ export function LogTable(): JSX.Element {
     clearJump()
   }, [jumpToSeq, shown, viewport, clearJump, stopGlide])
 
+  // Motion blur while the table is moving fast (lib/scroll-blur.ts).
+  //
+  // The sampler only *reads* `scrollTop` and writes one SVG attribute, so the follow algorithm
+  // in DESIGN 5.6.2 stays the only thing that decides where the table is. The elements are
+  // looked up once here rather than through new refs, to keep this component's own wiring
+  // untouched.
+  //
+  // `scrollBlur` is the toolbar's appearance switch, off by default: the rules for this effect
+  // say it runs only where it has been measured to meet its acceptance bar, and an unmeasured
+  // effect stays off rather than shipping lower. Off means the sampler is never installed — no
+  // frame loop, no listener — because `attachScrollBlur` returns before doing anything.
+  useEffect(() => {
+    const scroller = scrollerRef.current
+    const layer = scroller?.querySelector<HTMLElement>('.dl-logs__window') ?? null
+    const blur = document.getElementById('dl-scroll-blur-blur')
+    if (scroller === null || layer === null || !(blur instanceof SVGFEGaussianBlurElement)) {
+      return
+    }
+    const handle = attachScrollBlur({
+      scroller,
+      layer,
+      blur,
+      enabled: scrollBlur && SCROLL_BLUR_VERIFIED,
+    })
+    return () => handle.detach()
+  }, [scrollBlur])
+
   const onScroll = useCallback(
     (event: React.UIEvent<HTMLDivElement>) => {
       const node = event.currentTarget
@@ -634,6 +676,23 @@ export function LogTable(): JSX.Element {
         ))}
       </div>
 
+      {/*
+        The blur's definition. `color-interpolation-filters="sRGB"` is required: the SVG default
+        is linearRGB, which shifts the contrast of text that passes through the filter.
+      */}
+      <svg className="dl-blur-defs" aria-hidden="true" focusable="false">
+        <filter
+          id="dl-scroll-blur"
+          x="-2%"
+          y="-2%"
+          width="104%"
+          height="104%"
+          colorInterpolationFilters="sRGB"
+        >
+          <feGaussianBlur id="dl-scroll-blur-blur" stdDeviation="0 0" />
+        </filter>
+      </svg>
+
       <div
         className="dl-logs__scroller dl-scroll"
         ref={scrollerRef}
@@ -655,7 +714,9 @@ export function LogTable(): JSX.Element {
             <span className="dl-empty__hint">
               {crashOnly && records.length > 0
                 ? '当前缓冲没有崩溃行：关闭「仅看崩溃」可以查看全部日志，或采集一次崩溃日志。'
-                : '在左侧选择设备与采集源，然后点击「开始采集」。可同时采集多个设备／采集源。'}
+                : report !== null && report.outcomes.length > 0
+                  ? `上次采集：${report.records} 条记录 · ${report.outcomes.length} 项探针（${report.sourcesFound} 项有结果）。逐项结论见「采集报告」。`
+                  : '在左侧选择设备与采集源后点击「开始采集」。'}
             </span>
             {notice !== null ? (
               <span className="dl-empty__hint dl-mono">{notice}</span>
@@ -665,9 +726,22 @@ export function LogTable(): JSX.Element {
           <>
             {/* Spacers keep the scrollbar honest while only the window is mounted. */}
             <div style={{ height: `${topPad}px` }} aria-hidden="true" />
-            {windowRows.map((row) => (
-              <LogRowView key={row.seq} row={row} crash={crashKinds.get(row.seq)} />
-            ))}
+            {/*
+              The filter goes on this layer and nowhere else: it wraps only the mounted rows,
+              is viewport-sized, and leaves the spacers outside it — filtering the spacer would
+              stretch the filter region over the whole virtual height, and filtering the scroller
+              would blur the scrollbar too. See lib/scroll-blur.ts.
+            */}
+            <div className="dl-logs__window">
+              {windowRows.map((row) => (
+                <LogRowView
+                  key={row.seq}
+                  row={row}
+                  crash={crashKinds.get(row.seq)}
+                  jumped={row.seq === jumpToSeq}
+                />
+              ))}
+            </div>
             <div style={{ height: `${bottomPad}px` }} aria-hidden="true" />
           </>
         )}
