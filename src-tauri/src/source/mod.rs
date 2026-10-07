@@ -44,12 +44,20 @@ pub enum LogSourceKind {
     Boot,
     /// A device booted into Recovery: its shell, its logs and its pstore.
     Recovery,
+    /// The kernel evidence rescued by the optional KernelSU boot-log module.
+    ///
+    /// Not a stream from the device's live buffers: it is the *previous* crash's kernel log
+    /// (pstore) plus this boot's kernel ring, which the module copies to a fixed location at
+    /// `post-fs-data` — before this app could have connected. It needs root, because
+    /// `/data/adb` is `0700 root`, and it exists only on a device where the module is
+    /// installed.
+    Module,
 }
 
 impl LogSourceKind {
     /// Every kind, in UI display order.
     #[must_use]
-    pub fn all() -> [Self; 6] {
+    pub fn all() -> [Self; 7] {
         [
             Self::Logcat,
             Self::Dmesg,
@@ -57,6 +65,7 @@ impl LogSourceKind {
             Self::Crash,
             Self::Boot,
             Self::Recovery,
+            Self::Module,
         ]
     }
 
@@ -70,6 +79,7 @@ impl LogSourceKind {
             "crash" | "crashlog" => Some(Self::Crash),
             "boot" | "bootlog" => Some(Self::Boot),
             "recovery" => Some(Self::Recovery),
+            "module" | "ksu" | "ksumodule" => Some(Self::Module),
             _ => None,
         }
     }
@@ -84,6 +94,7 @@ impl std::fmt::Display for LogSourceKind {
             Self::Crash => "crash",
             Self::Boot => "boot",
             Self::Recovery => "recovery",
+            Self::Module => "module",
         })
     }
 }
@@ -190,6 +201,17 @@ pub struct SourceOptions {
     /// sense when its output matches that grammar; the UI says as much.
     #[serde(default)]
     pub custom_command: Option<String>,
+    /// Add the `events` buffer to the capture when the device has one.
+    ///
+    /// The events buffer is where the ActivityManager announces what happened —
+    /// `am_crash`, `am_proc_died`, `am_kill` — and it is the cheapest way to tell a
+    /// crash source from the processes torn down around it. It is *not* added to
+    /// [`LogcatBuffer::defaults`] because it is verbose and only useful when someone
+    /// is watching for crashes; a session that is, asks for it here. The device
+    /// decides the rest: [`SourceOptions::with_available_events`] drops the request
+    /// when the buffer does not exist, which some ROMs do.
+    #[serde(default)]
+    pub include_events: bool,
 }
 
 impl SourceOptions {
@@ -218,9 +240,49 @@ impl SourceOptions {
         }
     }
 
+    /// The buffer list to capture, with `events` added when it is both wanted and
+    /// available on this device.
+    ///
+    /// `available` is what the device reported (`logcat -g`); an empty slice means
+    /// "unknown", in which case the request is honoured and a ROM without the buffer
+    /// is handled by the collector's existing fallback. Passing the list explicitly
+    /// is what keeps `logcat -b events` off devices that would fail it.
+    #[must_use]
+    pub fn buffers_with_events(&self, available: &[LogcatBuffer]) -> Vec<LogcatBuffer> {
+        let mut buffers = self.effective_buffers();
+        if !self.include_events || buffers.contains(&LogcatBuffer::Events) {
+            return buffers;
+        }
+        let known = !available.is_empty();
+        if !known || available.contains(&LogcatBuffer::Events) {
+            buffers.push(LogcatBuffer::Events);
+        }
+        buffers
+    }
+
     /// `-b main,system,crash`, or nothing when no buffers apply.
     #[must_use]
     pub fn buffer_args(&self) -> Vec<String> {
+        let mut args = self.buffer_args_inner();
+        // The `events` buffer is where ActivityManager announces `am_crash`,
+        // `am_proc_died` and `am_kill` — what tells a crash source apart from the
+        // processes Force finished with it. It is requested only when the device was
+        // *seen* to have it (the cache the probe path fills): asking a ROM that lacks it
+        // could make logcat fail, and probing the device here would add a round trip to
+        // every capture start. Unknown means "leave the request as it was".
+        if self.include_events
+            && !args.iter().any(|name| name == crate::source::LogcatBuffer::Events.as_str())
+            && crate::collect::profile::available_buffers()
+                .iter()
+                .any(|name| name == crate::source::LogcatBuffer::Events.as_str())
+        {
+            args.push(crate::source::LogcatBuffer::Events.as_str().to_owned());
+        }
+        args
+    }
+
+    /// The buffers the options name, before the device gets a say about `events`.
+    fn buffer_args_inner(&self) -> Vec<String> {
         let buffers = self.effective_buffers();
         if buffers.is_empty() {
             return Vec::new();
@@ -368,7 +430,7 @@ pub fn validate_custom_command(command: &str) -> Result<()> {
 const LOGCAT_SPEC: LogSourceSpec = LogSourceSpec {
     kind: LogSourceKind::Logcat,
     label: "logcat",
-    description: "用户态日志：应用、框架与系统服务",
+    description: "应用 / 框架 / 系统服务的用户态日志",
     requires_root: false,
     requires_recovery: false,
 
@@ -382,7 +444,7 @@ const LOGCAT_SPEC: LogSourceSpec = LogSourceSpec {
 const DMESG_SPEC: LogSourceSpec = LogSourceSpec {
     kind: LogSourceKind::Dmesg,
     label: "dmesg",
-    description: "内核环形缓冲区（printk 文本格式）",
+    description: "内核环形缓冲，printk 文本格式",
     requires_root: true,
     requires_recovery: false,
 
@@ -410,20 +472,27 @@ const KMSG_SPEC: LogSourceSpec = LogSourceSpec {
 const CRASH_SPEC: LogSourceSpec = LogSourceSpec {
     kind: LogSourceKind::Crash,
     label: "崩溃日志",
-    description: "上次崩溃：logcat -L 与 pstore / last_kmsg 持久化记录",
+    description: "崩溃缓冲区 logcat -b crash；Dropbox / 墓碑 / ANR 由崩溃探针按条目读取（非 root 走 dumpsys dropbox --print）",
     requires_root: false,
     requires_recovery: false,
-    default_command: "logcat -L -d; cat /sys/fs/pstore/console-ramoops-0; cat /proc/last_kmsg",
+    // Only the crash buffer, and deliberately *no* line cap: `tail -n 400` cut FATAL
+    // EXCEPTION headers in half (measured on a real capture whose file began mid-stack) and
+    // made neighbouring entries truncate each other. The buffer is already bounded by the
+    // ROM, and the rest of the scene is read by the crash probes, one file per entry, where
+    // the limits are counted in entries rather than lines. `2>/dev/null` + a trailing `true`
+    // keep the "no material ≠ capture failed" contract: a device with nothing to show must
+    // read as "nothing found".
+    default_command: "logcat -b crash -d 2>/dev/null; true",
     parser: ParserKind::Auto,
     supports_custom_command: false,
-    origin: "logcat -L / pstore / last_kmsg",
+    origin: "logcat -b crash",
 };
 
 /// Metadata for the boot-time collector.
 const BOOT_SPEC: LogSourceSpec = LogSourceSpec {
     kind: LogSourceKind::Boot,
     label: "开机日志",
-    description: "本次开机：设备一出现就轮询 dmesg，抢在缓冲区被覆写之前",
+    description: "本次开机日志：设备出现即轮询 dmesg，避免环形缓冲被覆写",
     requires_root: false,
     requires_recovery: false,
     default_command: "dmesg",
@@ -436,7 +505,7 @@ const BOOT_SPEC: LogSourceSpec = LogSourceSpec {
 const RECOVERY_SPEC: LogSourceSpec = LogSourceSpec {
     kind: LogSourceKind::Recovery,
     label: "Recovery 日志",
-    description: "Recovery 模式：dmesg、logcat -d、/tmp/recovery.log 与 pstore",
+    description: "Recovery 模式：dmesg、logcat -d、/tmp/recovery.log、pstore",
     requires_root: false,
     requires_recovery: true,
     default_command: "dmesg; logcat -d; cat /tmp/recovery.log; cat /sys/fs/pstore/console-ramoops-0",
@@ -444,21 +513,42 @@ const RECOVERY_SPEC: LogSourceSpec = LogSourceSpec {
     supports_custom_command: false,
     origin: "recovery shell / pstore",
 };
+/// Metadata for the KernelSU module's rescued kernel evidence.
+const MODULE_SPEC: LogSourceSpec = LogSourceSpec {
+    kind: LogSourceKind::Module,
+    label: "模块",
+    description: "KernelSU 模块在开机最早期抢救的内核证据：pstore（上次崩溃）、last_kmsg、dmesg",
+    // `/data/adb` is `0700 root`, so the files are unreadable without su.
+    requires_root: true,
+    requires_recovery: false,
+    // Three fixed names, in the order they are worth reading, each bounded by the app's own
+    // byte cap. `2>/dev/null` plus a trailing `true` because a missing file is the *normal*
+    // case on a clean shutdown — a non-zero exit must not fail the whole session.
+    default_command: "echo '== pstore.txt'; cat /data/adb/droidlog/kernel/pstore.txt 2>/dev/null; echo '== last_kmsg.txt'; cat /data/adb/droidlog/kernel/last_kmsg.txt 2>/dev/null; echo '== dmesg.txt'; cat /data/adb/droidlog/kernel/dmesg.txt 2>/dev/null; true",
+    parser: ParserKind::Auto,
+    supports_custom_command: false,
+    origin: "KernelSU 模块 /data/adb/droidlog/kernel",
+};
+
 /// Every source's metadata, in UI display order.
-static SPECS: [LogSourceSpec; 6] = [
+static SPECS: [LogSourceSpec; 7] = [
     LOGCAT_SPEC,
     DMESG_SPEC,
     KMSG_SPEC,
     CRASH_SPEC,
     BOOT_SPEC,
     RECOVERY_SPEC,
+    MODULE_SPEC,
 ];
 
 /// Reason reported when a rooted source is selected without root.
-pub const ROOT_REQUIRED_REASON: &str = "需要切换到 Root 模式（su -c）";
+pub const ROOT_REQUIRED_REASON: &str = "需要 Root（su -c）";
 
 /// Reason reported when a recovery-only source is selected without a recovery device.
 pub const RECOVERY_REQUIRED_REASON: &str = "仅当设备处于 Recovery 模式时可用";
+
+/// Reason reported when the module source is selected on a device without the module.
+pub const MODULE_REQUIRED_REASON: &str = "需要设备已刷入 Droidlog Boot Log 模块（KernelSU）";
 
 /// All source metadata.
 #[must_use]
@@ -479,6 +569,7 @@ pub fn spec(kind: LogSourceKind) -> &'static LogSourceSpec {
         LogSourceKind::Crash => &CRASH_SPEC,
         LogSourceKind::Boot => &BOOT_SPEC,
         LogSourceKind::Recovery => &RECOVERY_SPEC,
+        LogSourceKind::Module => &MODULE_SPEC,
     }
 }
 
@@ -489,20 +580,27 @@ pub fn build(kind: LogSourceKind) -> Box<dyn LogSource> {
         LogSourceKind::Logcat => Box::new(LogcatSource::new()),
         LogSourceKind::Dmesg => Box::new(DmesgSource::new()),
         LogSourceKind::Kmsg => Box::new(KmsgSource::new()),
-        LogSourceKind::Crash | LogSourceKind::Boot | LogSourceKind::Recovery => {
+        LogSourceKind::Crash | LogSourceKind::Boot | LogSourceKind::Recovery | LogSourceKind::Module => {
             Box::new(SpecialSource::new(kind))
         }
     }
 }
 
 /// Availability of every source for a device with the given root capability.
+///
+/// `module` is whether the KernelSU boot-log module is installed on the device. It is a
+/// parameter rather than a field on [`LogSourceSpec`] because exactly one source has the
+/// condition: adding a `requires_module` flag would have meant editing every spec to say
+/// `false`, which is more places to get wrong than one branch here.
 #[must_use]
-pub fn availability(root_available: bool, recovery: bool) -> Vec<SourceAvailability> {
+pub fn availability(root_available: bool, recovery: bool, module: bool) -> Vec<SourceAvailability> {
     SPECS
         .iter()
         .map(|spec| {
             if spec.requires_recovery && !recovery {
                 SourceAvailability::unavailable(*spec, RECOVERY_REQUIRED_REASON)
+            } else if spec.kind == LogSourceKind::Module && !module {
+                SourceAvailability::unavailable(*spec, MODULE_REQUIRED_REASON)
             } else if spec.requires_root && !root_available {
                 SourceAvailability::unavailable(*spec, ROOT_REQUIRED_REASON)
             } else {
@@ -558,7 +656,7 @@ mod tests {
     fn availability_gates_rooted_and_recovery_sources() {
         // A normal, unrooted device: capture sources are offered, kernel ones
         // are not, and the recovery collector waits for recovery mode.
-        let plain = availability(false, false);
+        let plain = availability(false, false, false);
         assert_eq!(plain.len(), LogSourceKind::all().len());
         for kind in [
             LogSourceKind::Logcat,
@@ -572,6 +670,7 @@ mod tests {
             LogSourceKind::Dmesg,
             LogSourceKind::Kmsg,
             LogSourceKind::Recovery,
+            LogSourceKind::Module,
         ] {
             let entry = plain.iter().find(|entry| entry.spec.kind == kind);
             assert_eq!(entry.map(|entry| entry.available), Some(false), "{kind}");
@@ -581,8 +680,9 @@ mod tests {
             );
         }
 
-        // Root unlocks the kernel sources, but not the recovery collector.
-        let rooted = availability(true, false);
+        // Root unlocks the kernel sources, but not the recovery collector — and not the module
+        // source either: root alone cannot conjure the module.
+        let rooted = availability(true, false, false);
         for kind in [
             LogSourceKind::Logcat,
             LogSourceKind::Dmesg,
@@ -593,18 +693,38 @@ mod tests {
             let entry = rooted.iter().find(|entry| entry.spec.kind == kind);
             assert_eq!(entry.map(|entry| entry.available), Some(true), "{kind}");
         }
-        let recovery = rooted
-            .iter()
-            .find(|entry| entry.spec.kind == LogSourceKind::Recovery);
-        assert_eq!(recovery.map(|entry| entry.available), Some(false));
+        for kind in [LogSourceKind::Recovery, LogSourceKind::Module] {
+            let entry = rooted.iter().find(|entry| entry.spec.kind == kind);
+            assert_eq!(entry.map(|entry| entry.available), Some(false), "{kind}");
+        }
 
         // A device in recovery mode: only the recovery collector can work, and
         // the reason shown for the others is still the recovery one.
-        let in_recovery = availability(false, true);
+        let in_recovery = availability(false, true, false);
         let recovery = in_recovery
             .iter()
             .find(|entry| entry.spec.kind == LogSourceKind::Recovery);
         assert_eq!(recovery.map(|entry| entry.available), Some(true));
+
+        // The module source needs both: the module installed *and* root, because
+        // `/data/adb` is `0700 root`. This is the pair the toolbar badge follows.
+        let module_only = availability(false, false, true);
+        let entry = module_only
+            .iter()
+            .find(|entry| entry.spec.kind == LogSourceKind::Module);
+        assert_eq!(entry.map(|entry| entry.available), Some(false));
+        assert_eq!(
+            entry.and_then(|entry| entry.unavailable_reason),
+            Some(ROOT_REQUIRED_REASON),
+            "with the module installed but no root, root is the reason that matters"
+        );
+
+        let module_and_root = availability(true, false, true);
+        let entry = module_and_root
+            .iter()
+            .find(|entry| entry.spec.kind == LogSourceKind::Module);
+        assert_eq!(entry.map(|entry| entry.available), Some(true));
+        assert_eq!(entry.and_then(|entry| entry.unavailable_reason), None);
     }
 
     #[test]
@@ -670,5 +790,66 @@ mod tests {
         assert_eq!(options.pids, vec![123]);
         assert_eq!(options.buffers, vec![LogcatBuffer::Radio]);
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod events_tests {
+    use super::*;
+
+    /// The buffer is opt-in: a session that is not watching for crashes must not pay
+    /// for the events stream.
+    #[test]
+    fn events_are_only_added_when_asked_for() {
+        let options = SourceOptions::default();
+        assert!(!options.include_events);
+        let buffers = options.buffers_with_events(&[]);
+        assert!(!buffers.contains(&LogcatBuffer::Events));
+        assert!(buffers.contains(&LogcatBuffer::Main));
+    }
+
+    /// Unknown availability is honoured, and the collector's existing fallback covers
+    /// a ROM that turns out not to have the buffer.
+    #[test]
+    fn events_are_added_when_available_or_unknown() {
+        let options = SourceOptions { include_events: true, ..SourceOptions::default() };
+        assert!(options.buffers_with_events(&[]).contains(&LogcatBuffer::Events));
+        assert!(options
+            .buffers_with_events(&[LogcatBuffer::Main, LogcatBuffer::Events])
+            .contains(&LogcatBuffer::Events));
+    }
+
+    /// A device that reported no `events` buffer must not be told to capture one:
+    /// that is the difference between "on demand" and "breaks on this ROM".
+    #[test]
+    fn a_device_without_the_buffer_is_not_asked_for_it() {
+        let options = SourceOptions { include_events: true, ..SourceOptions::default() };
+        let buffers = options.buffers_with_events(&[
+            LogcatBuffer::Main,
+            LogcatBuffer::System,
+            LogcatBuffer::Crash,
+        ]);
+        assert!(!buffers.contains(&LogcatBuffer::Events));
+        assert!(buffers.contains(&LogcatBuffer::Crash));
+    }
+
+    #[test]
+    fn events_are_never_duplicated_and_explicit_lists_are_respected() {
+        let options = SourceOptions {
+            include_events: true,
+            buffers: vec![LogcatBuffer::Main, LogcatBuffer::Events],
+            ..SourceOptions::default()
+        };
+        let buffers = options.buffers_with_events(&[LogcatBuffer::Events]);
+        assert_eq!(
+            buffers.iter().filter(|buffer| **buffer == LogcatBuffer::Events).count(),
+            1
+        );
+        let narrow = SourceOptions {
+            include_events: false,
+            buffers: vec![LogcatBuffer::Radio],
+            ..SourceOptions::default()
+        };
+        assert_eq!(narrow.buffers_with_events(&[]), vec![LogcatBuffer::Radio]);
     }
 }

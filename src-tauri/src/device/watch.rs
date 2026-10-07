@@ -134,6 +134,7 @@ struct ProbeCache {
     sdk: Option<i32>,
     root_available: bool,
     root_reason: Option<String>,
+    module_available: bool,
 }
 
 /// Identity of a device appearance, used as the probe cache key.
@@ -282,6 +283,7 @@ async fn poll_once(
                     sdk: probe.sdk,
                     root_available: probe.root_available,
                     root_reason: probe.root_reason,
+                    module_available: probe.module_available,
                 },
                 Err(err) => ProbeCache {
                     key: key.clone(),
@@ -289,6 +291,8 @@ async fn poll_once(
                     sdk: None,
                     root_available: false,
                     root_reason: Some(err.to_string()),
+                    // A failed probe answers nothing, so the module is presumed absent.
+                    module_available: false,
                 },
             };
             cache.insert(device.serial.clone(), entry);
@@ -299,6 +303,7 @@ async fn poll_once(
             device.sdk = entry.sdk;
             device.root_available = Some(entry.root_available);
             device.root_reason.clone_from(&entry.root_reason);
+            device.ksu_module = entry.module_available;
         }
     }
 

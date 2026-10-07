@@ -121,6 +121,34 @@ pub struct ProbeOutcome {
     pub hint: Option<String>,
 }
 
+/// Upper bound on the bytes ingested from one file of a directory probe.
+///
+/// A tombstone is normally tens of kilobytes, but a pathological one can be megabytes, and
+/// the table must not stall on it. The limit is on *bytes* rather than lines so that a crash
+/// block is not cut in the middle by construction, and when it does bite the report says so
+/// instead of silently dropping the tail.
+pub const MAX_PROBE_BYTES: usize = 512 * 1024;
+
+/// The directory the optional KernelSU boot-log module maintains.
+///
+/// It holds exactly three fixed-name files — `pstore.txt`, `last_kmsg.txt`, `dmesg.txt` — one
+/// per kind, overwritten on every boot. Two properties matter to the probes below:
+///
+/// * the names are fixed, so the files can still be read when the listing is refused (see
+///   `known_files`), and
+/// * nothing accumulates. A listing probe reads only the first few names it is handed, so with
+///   timestamped names it would read the *oldest* boot; and if the small kernel files shared a
+///   directory with the module's userland dumps, those megabyte files would crowd them out of
+///   the budget entirely — which would defeat the reason the module exists.
+///
+/// `/data/adb` is root-only, so this yields material in Root mode. In ADB mode the probe comes
+/// back denied, which is the honest outcome — "no material" is not "capture failed".
+pub const KSU_KERNEL_DIR: &str = "/data/adb/droidlog/kernel";
+
+/// The fixed names inside `KSU_KERNEL_DIR`, most useful first: the previous crash, the legacy
+/// interface, then this boot's kernel ring.
+pub const KSU_KERNEL_FILES: &[&str] = &["pstore.txt", "last_kmsg.txt", "dmesg.txt"];
+
 /// Crash-log probes, in the order they are worth reading.
 ///
 /// The `logcat` buffers come first because they are the only probes that need
@@ -172,11 +200,35 @@ pub const CRASH_PROBES: &[Probe] = &[
         dir: Some("/data/system/dropbox"),
     },
     Probe {
+        id: "dropbox-dumpsys",
+        label: "系统崩溃归档 dumpsys dropbox --print",
+        // The unprivileged path to Dropbox, and therefore the one that matters: the shell
+        // user may read the archive through `dumpsys`, which is how a system-app crash
+        // stack is obtained without root. The per-file path above stays for rooted devices,
+        // where the *file names* carry the tag and time (`system_app_crash@…`) that the
+        // parser reads — `cat *` loses exactly that.
+        //
+        // It runs unconditionally and is allowed to fail: on a ROM that refuses it the
+        // outcome is "denied", not a failed capture ("no material ≠ capture failed").
+        command: "dumpsys dropbox --print",
+        ingest: true,
+        dir: None,
+    },
+    Probe {
         id: "anr-dir",
         label: "ANR 轨迹目录 /data/anr",
         command: "ls -1 /data/anr",
         ingest: false,
         dir: Some("/data/anr"),
+    },
+    Probe {
+        id: "ksu-kernel-dir",
+        label: "KSU 开机日志模块的内核证据（需 Root）",
+        // The module rescues pstore at post-fs-data, before this app can connect, and keeps the
+        // three files under fixed names so they survive a refused listing.
+        command: "ls -1 /data/adb/droidlog/kernel",
+        ingest: false,
+        dir: Some(KSU_KERNEL_DIR),
     },
 ];
 
@@ -250,6 +302,15 @@ pub const BOOT_PROBES: &[Probe] = &[
         dir: Some("/sys/fs/pstore"),
     },
     Probe {
+        id: "boot-ksu-dir",
+        label: "KSU 开机日志模块的内核证据（需 Root）",
+        // The same evidence as `boot-pstore`, but rescued *during* boot by the module, so it is
+        // often still there when the pstore region has already been cleared.
+        command: "ls -1 /data/adb/droidlog/kernel",
+        ingest: false,
+        dir: Some(KSU_KERNEL_DIR),
+    },
+    Probe {
         id: "boot-props",
         label: "启动属性 sys.boot_completed / init.svc.bootanim",
         command: "getprop | grep -E 'sys.boot_completed|init.svc.bootanim|ro.boot.verifiedbootstate'",
@@ -281,6 +342,9 @@ pub const PSTORE_FILES: &[&str] = &[
 pub fn known_files(probe_id: &str) -> &'static [&'static str] {
     match probe_id {
         "boot-pstore" | "recovery-pstore" => PSTORE_FILES,
+        // The module's names are fixed by construction, so the fallback is exact rather than a
+        // guess: even a refused `ls` still yields the three files.
+        "ksu-kernel-dir" | "boot-ksu-dir" => KSU_KERNEL_FILES,
         _ => &[],
     }
 }

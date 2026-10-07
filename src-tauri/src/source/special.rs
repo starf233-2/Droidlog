@@ -32,7 +32,10 @@ impl SpecialSource {
     pub fn new(kind: LogSourceKind) -> Self {
         debug_assert!(matches!(
             kind,
-            LogSourceKind::Crash | LogSourceKind::Boot | LogSourceKind::Recovery
+            LogSourceKind::Crash
+                | LogSourceKind::Boot
+                | LogSourceKind::Recovery
+                | LogSourceKind::Module
         ));
         Self { kind }
     }

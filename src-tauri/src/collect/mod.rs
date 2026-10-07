@@ -12,6 +12,7 @@
 //! session behaves exactly like a `logcat` session in the UI.
 
 pub mod boot;
+pub mod dropbox;
 pub mod probe;
 pub mod profile;
 
@@ -236,7 +237,75 @@ impl Ingestor {
     }
 
     /// Feeds every line of `text`, then flushes.
-    pub(crate) fn feed_text(&mut self, text: &str) -> usize {
+    /// Feeds one line of probe output. Never filtered.
+    ///
+    /// A probe read is crash-scene *material* — a dropbox entry, a tombstone, an ANR trace
+    /// — not a log stream. Its lines carry no level and no tag, and they often belong to a
+    /// process other than the one being watched, so the level/target filters that make
+    /// sense for logcat would discard exactly what the user asked to collect. That is why
+    /// a crash collection could report "no logs" on a device that had 585 crash-buffer
+    /// lines and three tombstones on disk.
+    fn feed_probe_line(&mut self, line: &str, state: &AppState) -> bool {
+        if line.trim().is_empty() {
+            return false;
+        }
+        let record = crate::parser::parse_auto(self.source, line, state.next_seq());
+        // Probe reads include files that are not text at all: `tombstone_00.pb` is
+        // protobuf, and dropbox archives can be gzipped. Feeding those bytes through the
+        // log grammar produced rows of unreadable noise that buried the readable material,
+        // so anything that is mostly unprintable is counted and left out of the stream.
+        if is_binary_line(line) {
+            crate::crash::session::note_binary(self.session_id.as_ref(), 1);
+            return false;
+        }
+
+        // The level and TAG rules are skipped — a tombstone or dropbox line has neither —
+        // but a *target* the user chose is honoured: watching one app's crash material must
+        // not drag in every other app's. No target means everything, which is what a
+        // from-scratch crash sweep wants.
+        if let Some(target) = self.target.as_ref() {
+            // A tombstone or dropbox entry names its process *inside the text*
+            // (`name: com.example.app  >>> com.example.app <<<`), and the parser has no
+            // pid→package table for a file it has just read — so the record cannot be
+            // matched. Without this, "watch this app" threw away that app's own crash
+            // material, which is the one thing the target was set for.
+            let named_in_text = target
+                .package
+                .as_deref()
+                .is_some_and(|package| !package.is_empty() && line.contains(package))
+                || {
+                    let input = target.input.trim();
+                    input.len() >= 3 && line.contains(input)
+                };
+            if !named_in_text && !reader::target_matches(self.target.as_ref(), &record) {
+                return false;
+            }
+        }
+        self.accepted += 1;
+        self.batch.push(record);
+        if self.batch.len() >= BATCH_SIZE {
+            self.flush();
+        }
+        true
+    }
+    /// Feeds a probe read; returns `(records accepted, crash entries parsed)`.
+    ///
+    /// The report wants to say how many crash entries a probe's files yielded, and the crash
+    /// events are the only honest number for that — records count table rows, which includes
+    /// every stack frame as its own row. `feed_text` keeps its signature so the log-stream
+    /// path is untouched.
+    pub(crate) fn feed_probe_text(&mut self, text: &str) -> (usize, usize) {
+        // Probe reads — dropbox entries, ANR traces, tombstones — arrive as whole texts
+        // rather than as log lines. Whatever they describe belongs to the timeline the
+        // same way a crash-buffer block does, so it is classified and parsed here and
+        // recorded for this session. An unreadable read still yields an event carrying
+        // its raw lines, which is the rule the rest of the crash code follows.
+        let parsed = crate::collect::dropbox::events_from_probe_text(text);
+        let entries = parsed.len();
+        for event in parsed {
+            crate::crash::live::note_crash_event(self.session_id.as_ref(), event);
+        }
+
         // The handle is cloned first: `state()` borrows the handle it is called
         // on, so calling it through `self.app` would freeze `self` for as long
         // as the guard lives.
@@ -245,12 +314,12 @@ impl Ingestor {
         self.refresh(&state);
         let mut accepted = 0;
         for line in text.lines() {
-            if self.feed_line(line, &state) {
+            if self.feed_probe_line(line, &state) {
                 accepted += 1;
             }
         }
         self.flush();
-        accepted
+        (accepted, entries)
     }
 
     /// Feeds one line; returns whether it survived the filters.
@@ -471,6 +540,11 @@ impl Run {
     /// "No such file or directory" line in the report that looks like a fault in
     /// this app rather than a fact about the phone.
     fn probes(self, profile: &DeviceProfile) -> Vec<Probe> {
+        // The one place a probe holds the device profile, so the one place that can tell
+        // the rest of the app what buffers this device has. Cached for the integrity
+        // report, which runs later and must not go back to the device for it.
+        crate::collect::profile::remember_available_buffers(&profile.logcat_buffers);
+
         self.candidate_probes()
             .iter()
             .copied()
@@ -718,11 +792,21 @@ async fn run_probe(
 
     if probe.ingest && status == ProbeStatus::Found {
         let (text, trimmed) = probe::tail_lines(&output.stdout, MAX_PROBE_LINES);
-        records = ingest.feed_text(&text);
+        let (added, entries) = ingest.feed_probe_text(&text);
+        records = added;
+        // Both remarks can apply at once, and neither may overwrite the other: the entry count
+        // is the number that means something (one Dropbox entry is one crash, while `records`
+        // counts every stack frame as a row), and the truncation notice is what keeps the
+        // count honest.
+        let mut notes: Vec<String> = Vec::new();
+        if entries > 0 {
+            notes.push(format!("解析出 {entries} 条崩溃条目"));
+        }
         if trimmed {
-            detail = Some(format!(
-                "输出超过 {MAX_PROBE_LINES} 行，仅保留最新部分"
-            ));
+            notes.push(format!("输出超过 {MAX_PROBE_LINES} 行，仅保留最新部分"));
+        }
+        if !notes.is_empty() {
+            detail = Some(notes.join("；"));
         }
     }
 
@@ -731,6 +815,9 @@ async fn run_probe(
     // itself was refused, fall back to the names the kernel always uses (pstore)
     // instead of giving up on the directory entirely.
     if probe.dir.is_some() {
+        // Crash entries parsed out of the files, as opposed to table rows: this is the number
+        // the report quotes, because one Dropbox entry is dozens of rows (every frame is one).
+        let mut entries = 0_usize;
         let names: Vec<String> = if status == ProbeStatus::Found {
             let listed = probe::listed_files(&output.stdout, probe::MAX_FOLLOW_UP_FILES);
             if listed.is_empty() {
@@ -744,6 +831,7 @@ async fn run_probe(
                 .map(|name| (*name).to_owned())
                 .collect()
         };
+        let file_count = names.len();
         for name in names {
             let Some(dir) = probe.dir else { break };
             let command = probe::follow_up(dir, &name);
@@ -752,8 +840,37 @@ async fn run_probe(
                     let file_status = probe::classify_output(&file_output);
                     files.push(name.clone());
                     if file_status == ProbeStatus::Found {
-                        let (text, _) = probe::tail_lines(&file_output.stdout, MAX_PROBE_LINES);
-                        records += ingest.feed_text(&text);
+                        // The file name is evidence: a Dropbox entry is identified by
+                        // `system_app_crash@<time>.txt`, and the parser reads the tag and the
+                        // time from exactly that — which `cat *` threw away. The header also
+                        // marks the entry boundary, so two adjacent dumps in one stream cannot
+                        // bleed into each other.
+                        //
+                        // No line cap here: `tail -n 400` cut FATAL EXCEPTION headers in half
+                        // on a real capture. The limit is on bytes instead, and when it bites
+                        // the report says so rather than quietly dropping the tail.
+                        let raw = file_output.stdout.as_str();
+                        let body = if raw.len() > probe::MAX_PROBE_BYTES {
+                            let mut end = probe::MAX_PROBE_BYTES;
+                            while end > 0 && !raw.is_char_boundary(end) {
+                                end -= 1;
+                            }
+                            detail = Some(format!(
+                                "{name}: 超过 {} KB，仅保留前部",
+                                probe::MAX_PROBE_BYTES / 1024
+                            ));
+                            &raw[..end]
+                        } else {
+                            raw
+                        };
+                        let mut text = String::with_capacity(body.len() + name.len() + 8);
+                        text.push_str("== ");
+                        text.push_str(&name);
+                        text.push('\n');
+                        text.push_str(body);
+                        let (added, parsed) = ingest.feed_probe_text(&text);
+                        records += added;
+                        entries += parsed;
                     } else {
                         detail = Some(format!("{name}: {}", file_status.label()));
                     }
@@ -762,6 +879,11 @@ async fn run_probe(
                     detail = Some(format!("{name}: {err}"));
                 }
             }
+        }
+        // Say what the files amounted to. `records` alone cannot carry this: it counts table
+        // rows, so one entry with forty frames reads as "40 条".
+        if entries > 0 {
+            detail = Some(format!("{file_count} 个文件，解析出 {entries} 条崩溃条目"));
         }
     }
 
@@ -809,6 +931,25 @@ fn detail_of(stderr: &str) -> Option<String> {
         .map(str::trim)
         .find(|line| !line.is_empty())
         .map(|line| line.chars().take(200).collect())
+}
+
+/// Whether a line is not text, judged by the share of unprintable characters.
+///
+/// Threshold rather than "any unprintable byte": a stray control character in an otherwise
+/// readable line is common (terminal escapes, `\u{0}` in a native message), while a
+/// protobuf blob is mostly unprintable. 30% separates the two without guessing at content.
+fn is_binary_line(line: &str) -> bool {
+    if line.is_empty() {
+        return false;
+    }
+    let bytes = line.as_bytes();
+    let bad = bytes
+        .iter()
+        .filter(|byte| {
+            !matches!(byte, 0x09 | 0x0A | 0x0D | 0x20..=0x7E) && **byte < 0x80
+        })
+        .count();
+    bad * 100 / bytes.len().max(1) >= 30
 }
 
 #[cfg(test)]

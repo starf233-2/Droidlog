@@ -91,6 +91,13 @@ pub struct DeviceInfo {
     /// log is `/tmp/recovery.log`, so the UI has to know before offering a
     /// collector that cannot work.
     pub recovery: bool,
+    /// Whether the optional Droidlog boot-log KernelSU module is installed.
+    ///
+    /// The module rescues kernel crash evidence at the earliest boot stage, before this app
+    /// could connect. When it is present the module collector is offered; when it is not, the
+    /// collector is still listed but states why it cannot run, which is easier to understand
+    /// than a source that silently disappears. Filled in by `probe_device`.
+    pub ksu_module: bool,
 }
 
 impl DeviceInfo {
@@ -113,6 +120,9 @@ impl DeviceInfo {
             root_available: None,
             root_reason: None,
             recovery,
+            // Unknown until the probe answers; "not installed" is the safe default, because the
+            // collector it gates cannot work without the module.
+            ksu_module: false,
         }
     }
 

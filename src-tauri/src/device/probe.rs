@@ -24,6 +24,31 @@ pub struct DeviceProbe {
     pub root_available: bool,
     /// Why root is unavailable, when it is.
     pub root_reason: Option<String>,
+    /// Whether the optional Droidlog boot-log KernelSU module is installed.
+    ///
+    /// Checked through root, because `/data/adb` is `0700 root`: without root the question
+    /// cannot be answered, and the honest answer is then `false` rather than a guess.
+    pub module_available: bool,
+}
+
+/// Device-side check for the optional boot-log module.
+///
+/// Prints a token rather than a path, so the answer is unambiguous: only [`KSU_MODULE_PRESENT`]
+/// counts, and an error message on stdout cannot be mistaken for a "yes".
+const MODULE_COMMAND: &str =
+    "[ -d /data/adb/modules/droidlog_bootlog ] && echo KSU_MODULE_PRESENT || echo KSU_MODULE_ABSENT";
+
+/// The token [`MODULE_COMMAND`] prints when the module is installed.
+const KSU_MODULE_PRESENT: &str = "KSU_MODULE_PRESENT";
+
+/// Whether an answer to [`MODULE_COMMAND`] says the module is installed.
+///
+/// Separate from the probe so it can be tested: the rule is "the token must be there", not
+/// "the output is non-empty", because a shell that complains on stdout must not be read as a
+/// yes. `su` in particular prints nothing useful when it fails, and a false positive here would
+/// light a badge for a device that has no module.
+fn module_is_present(stdout: &str) -> bool {
+    stdout.contains(KSU_MODULE_PRESENT)
 }
 
 /// Validates an Android package name before it is interpolated into a shell command.
@@ -135,11 +160,25 @@ pub async fn probe_device(adb: &Adb, serial: &str) -> Result<DeviceProbe> {
 
     let probe = root::probe(adb.program(), Some(serial)).await?;
 
+    // Only asked when root works: on a device without it, `su` would either prompt or fail, and
+    // the module cannot be read without root anyway — so "not available" is the truthful answer
+    // rather than a failed extra round trip. A device that answers with anything unexpected is
+    // treated as "not installed": the token has to be present exactly.
+    let module_available = if probe.available {
+        matches!(
+            adb.target(ExecMode::Root, Some(serial)).run(MODULE_COMMAND).await,
+            Ok(output) if module_is_present(&output.stdout)
+        )
+    } else {
+        false
+    };
+
     Ok(DeviceProbe {
         android_version,
         sdk,
         root_available: probe.available,
         root_reason: probe.reason,
+        module_available,
     })
 }
 
@@ -319,5 +358,21 @@ mod tests {
             validate_package("bad name").map_err(|e| e.kind()),
             Err("invalidInput")
         );
+    }
+
+    #[test]
+    fn module_detection_needs_the_token_not_just_output() {
+        // The installed answer, with the shell's newline.
+        assert!(module_is_present("KSU_MODULE_PRESENT\n"));
+        // The absent answer.
+        assert!(!module_is_present("KSU_MODULE_ABSENT\n"));
+        // A shell complaint, an empty answer, or a path that merely contains the word must all
+        // read as "not installed": a false positive lights a badge for a device without the
+        // module, and then offers a collector that cannot work.
+        assert!(!module_is_present(""));
+        assert!(!module_is_present("/system/bin/sh: su: not found\n"));
+        assert!(!module_is_present("droidlog_bootlog\n"));
+        // The token on a line of its own among other output still counts.
+        assert!(module_is_present("warning: something\nKSU_MODULE_PRESENT\n"));
     }
 }

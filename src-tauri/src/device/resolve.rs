@@ -733,12 +733,13 @@ async fn resolve_from(
     // Otherwise it must be a package name.
     validate_package(input)?;
     let uid = package_uid(adb, mode, serial, input).await?;
-    let mut pids = pids_for_package(rows, input);
-    if pids.is_empty() {
-        if let Some(uid) = uid {
-            pids = pids_for_uid(rows, uid);
-        }
-    }
+    // A package target never widens to its whole uid. It used to: with no matching
+    // process name the pids fell back to every process of that uid, and a system app
+    // (`com.android.settings`, uid 1000) produced *hundreds* of pids — so "watch this
+    // app" silently became "watch nothing in particular", and every filtered batch paid
+    // for hundreds of pid comparisons. A package that is not running has no pids, and
+    // that is the honest answer: the branches below say "已安装但当前没有进程运行".
+    let pids = pids_for_package(rows, input);
 
     if uid.is_none() && pids.is_empty() {
         return Ok(AppTarget::missing(

@@ -334,6 +334,33 @@ fn flush(
         }
     }
 
+    // Crash forensics, on the batch rather than per line: the watch gate is a tag
+    // comparison, so an ordinary batch costs a few comparisons per record and
+    // nothing else. Whatever it produces (crash blocks, AMS signals, resource
+    // anomalies) is remembered per session and emitted for the timeline.
+    for record in batch.iter() {
+                // Integrity counters: `message != raw` means no grammar took the line apart.
+        // Device timestamps are local text with no year, so gaps are not derived yet.
+        crate::crash::session::note_record(session_id, record.message != record.raw, None);
+        let events = crate::crash::live::observe_session_record(
+            session_id,
+            record.tag.as_deref().unwrap_or_default(),
+            &record.message,
+            record.seq as usize,
+            record.package.as_deref(),
+            record.pid,
+        );
+        if !events.is_empty() {
+            let _ = app.emit(
+                crate::crash::live::EVENT_CRASH,
+                crate::crash::live::CrashEventsEvent {
+                    session_id: session_id.to_owned(),
+                    events,
+                },
+            );
+        }
+    }
+
     let records = std::mem::replace(batch, Vec::with_capacity(BATCH_SIZE));
     // A failed emit means no window is listening; the ring still holds the data,
     // so `drain_records` can backfill after a reload.

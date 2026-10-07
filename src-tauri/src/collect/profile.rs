@@ -230,6 +230,37 @@ pub async fn detect(adb: &Adb, mode: ExecMode, serial: &str) -> DeviceProfile {
     }
 }
 
+/// The logcat buffers the last probed device reported.
+///
+/// This is a fact about the *device*, not about a session, so it lives here rather than
+/// in `AppState`: every session of the same device gets the same answer, and the answer
+/// survives the session that discovered it. It is a cache, not a source of truth — an
+/// empty list means "no device has been probed yet", and the integrity report says
+/// "cannot confirm" for that case instead of claiming a buffer is missing.
+static AVAILABLE_BUFFERS: std::sync::OnceLock<std::sync::Mutex<Option<Vec<String>>>> =
+    std::sync::OnceLock::new();
+
+fn available_slot() -> &'static std::sync::Mutex<Option<Vec<String>>> {
+    AVAILABLE_BUFFERS.get_or_init(|| std::sync::Mutex::new(None))
+}
+
+/// Remembers what a probe learned about the device's logcat buffers.
+pub fn remember_available_buffers(buffers: &[String]) {
+    use crate::state::LockExt as _;
+    let mut guard = available_slot().lock_ignore_poison();
+    *guard = Some(buffers.to_vec());
+}
+
+/// The buffers the device was last seen to have, or an empty list when unknown.
+#[must_use]
+pub fn available_buffers() -> Vec<String> {
+    use crate::state::LockExt as _;
+    available_slot()
+        .lock_ignore_poison()
+        .clone()
+        .unwrap_or_default()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

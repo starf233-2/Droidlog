@@ -27,6 +27,17 @@ use serde::{Deserialize, Serialize};
 
 use crate::parser::{LogLevel, LogRecord};
 
+pub mod ams;
+pub mod correlate;
+pub mod integrity;
+pub mod known;
+pub mod live;
+pub mod pipeline;
+pub mod resources;
+pub mod session;
+pub mod store;
+pub mod structured;
+
 /// The failure families the UI marks and lists.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
